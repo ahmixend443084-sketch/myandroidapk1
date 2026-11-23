@@ -8,6 +8,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.widget.*
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 
@@ -18,167 +19,170 @@ class QuickKeyboardService : InputMethodService() {
     private var index = 0
     private var delayMs = 500
     private var twoChars = false
-    private var alphabetMode = false
-    private var keyHeight = 68
+    private var alphabetMode = true
 
-    private lateinit var root: LinearLayout
+    private val keyHeight = 58
 
     override fun onCreateInputView(): View {
-        return buildKeyboard()
+        return createKeyboard()
     }
 
-    private fun buildKeyboard(): View {
+    private fun createKeyboard(): View {
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
 
-        val savedHeight = prefs.getInt("keyHeight", 68)
-        keyHeight = savedHeight.coerceIn(55, 100)
-
-        val sequence = if (alphabetMode) {
-            prefs.getString("letters", "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-                ?: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        } else {
-            prefs.getString("numbers", "12456") ?: "12456"
-        }
-
-        val main = LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(5, 6, 5, 6)
-            setBackgroundColor(Color.rgb(225, 230, 238))
+            setPadding(3, 5, 3, 5)
+            setBackgroundColor(Color.rgb(215, 220, 230))
         }
 
-        // TOP CONTROLS
-        val top = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        fun controlButton(label: String, action: () -> Unit): Button {
+        fun makeButton(
+            textValue: String,
+            size: Float,
+            action: () -> Unit
+        ): Button {
             return Button(this).apply {
-                text = label
-                textSize = 13f
+                text = textValue
+                textSize = size
+                isAllCaps = false
+                setTextColor(Color.BLACK)
+                setPadding(0, 0, 0, 0)
                 setOnClickListener { action() }
             }
         }
 
-        top.addView(controlButton("123") {
-            alphabetMode = false
-            index = 0
-            setInputView(buildKeyboard())
-        }, LinearLayout.LayoutParams(0, 52, 1f))
+        // TOP BAR
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
 
-        top.addView(controlButton("ABC") {
+        top.addView(makeButton("ABC") {
             alphabetMode = true
             index = 0
-            setInputView(buildKeyboard())
-        }, LinearLayout.LayoutParams(0, 52, 1f))
+            setInputView(createKeyboard())
+        }, LinearLayout.LayoutParams(0, 48, 1f))
 
-        top.addView(controlButton("AUTO START") {
+        top.addView(makeButton("123") {
+            alphabetMode = false
+            index = 0
+            setInputView(createKeyboard())
+        }, LinearLayout.LayoutParams(0, 48, 1f))
+
+        top.addView(makeButton("AUTO") {
             startAuto()
-        }, LinearLayout.LayoutParams(0, 52, 1.5f))
+        }, LinearLayout.LayoutParams(0, 48, 1f))
 
-        top.addView(controlButton("STOP") {
+        top.addView(makeButton("STOP") {
             running = false
             handler.removeCallbacks(autoTask)
-        }, LinearLayout.LayoutParams(0, 52, 1f))
+        }, LinearLayout.LayoutParams(0, 48, 1f))
 
-        main.addView(top)
+        root.addView(top)
 
-        // RESIZE CONTROLS
-        val resize = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+        // KEY ROW CREATOR
+        fun addKeyRow(keys: String, height: Int = keyHeight) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+
+            keys.forEach { character ->
+                val button = makeButton(character.toString(), 23f) {
+                    currentInputConnection?.commitText(character.toString(), 1)
+                }
+
+                val params = LinearLayout.LayoutParams(
+                    0,
+                    height,
+                    1f
+                )
+                params.setMargins(2, 3, 2, 3)
+                row.addView(button, params)
+            }
+
+            root.addView(row)
         }
 
-        resize.addView(controlButton("−") {
-            keyHeight = (keyHeight - 5).coerceAtLeast(55)
-            prefs.edit().putInt("keyHeight", keyHeight).apply()
-            setInputView(buildKeyboard())
-        }, LinearLayout.LayoutParams(0, 45, 1f))
+        // ALPHABET KEYBOARD
+        if (alphabetMode) {
+            addKeyRow("QWERTYUIOP")
+            addKeyRow("ASDFGHJKL")
 
-        resize.addView(TextView(this).apply {
-            text = "KEY SIZE: $keyHeight"
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setTextColor(Color.BLACK)
-        }, LinearLayout.LayoutParams(0, 45, 2f))
+            val third = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
 
-        resize.addView(controlButton("+") {
-            keyHeight = (keyHeight + 5).coerceAtMost(100)
-            prefs.edit().putInt("keyHeight", keyHeight).apply()
-            setInputView(buildKeyboard())
-        }, LinearLayout.LayoutParams(0, 45, 1f))
+            addViewToThirdRow(third, "ZXCVBNM")
 
-        main.addView(resize)
-
-        // KEY GRID
-        val grid = GridLayout(this).apply {
-            columnCount = 5
-        }
-
-        val keys = if (alphabetMode) {
-            prefs.getString("letters", "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-                ?: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            root.addView(third)
         } else {
-            prefs.getString("numbers", "12456") ?: "12456"
+            // NUMBER KEYBOARD
+            addKeyRow("123")
+            addKeyRow("456")
+            addKeyRow("789")
+
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+
+            val zero = makeButton("0", 26f) {
+                currentInputConnection?.commitText("0", 1)
+            }
+
+            row.addView(
+                zero,
+                LinearLayout.LayoutParams(0, keyHeight, 2f)
+            )
+
+            root.addView(row)
         }
 
-        keys.forEach { character ->
+        // BOTTOM CONTROLS
+        val bottom = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
 
+        bottom.addView(makeButton("SPACE", 16f) {
+            currentInputConnection?.commitText(" ", 1)
+        }, LinearLayout.LayoutParams(0, 55, 2f))
+
+        bottom.addView(makeButton("⌫", 22f) {
+            currentInputConnection?.deleteSurroundingText(1, 0)
+        }, LinearLayout.LayoutParams(0, 55, 1f))
+
+        bottom.addView(makeButton("➤ SEND", 16f) {
+            sendAction(currentInputConnection)
+        }, LinearLayout.LayoutParams(0, 55, 1.5f))
+
+        root.addView(bottom)
+
+        return ScrollView(this).apply {
+            isFillViewport = true
+            addView(root)
+        }
+    }
+
+    private fun addViewToThirdRow(row: LinearLayout, keys: String) {
+        keys.forEach { character ->
             val button = Button(this).apply {
                 text = character.toString()
-                textSize = 28f
-                isAllCaps = false
+                textSize = 23f
                 setTextColor(Color.BLACK)
+                setPadding(0, 0, 0, 0)
                 setOnClickListener {
                     currentInputConnection?.commitText(character.toString(), 1)
                 }
             }
 
-            val params = GridLayout.LayoutParams().apply {
-                width = 0
-                height = keyHeight
-                columnSpec = GridLayout.spec(
-                    GridLayout.UNDEFINED, 1f
-                )
-                setMargins(3, 3, 3, 3)
-            }
-
-            grid.addView(button, params)
-        }
-
-        main.addView(grid)
-
-        // BOTTOM BUTTONS
-        val bottom = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-
-        fun bottomButton(label: String, action: () -> Unit): Button {
-            return Button(this).apply {
-                text = label
-                textSize = 17f
-                setOnClickListener { action() }
-            }
-        }
-
-        bottom.addView(bottomButton("SPACE") {
-            currentInputConnection?.commitText(" ", 1)
-        }, LinearLayout.LayoutParams(0, 58, 1f))
-
-        bottom.addView(bottomButton("⌫") {
-            currentInputConnection?.deleteSurroundingText(1, 0)
-        }, LinearLayout.LayoutParams(0, 58, 1f))
-
-        bottom.addView(bottomButton("SEND") {
-            sendAction(currentInputConnection)
-        }, LinearLayout.LayoutParams(0, 58, 1.5f))
-
-        main.addView(bottom)
-
-        return ScrollView(this).apply {
-            isFillViewport = true
-            addView(main)
+            row.addView(
+                button,
+                LinearLayout.LayoutParams(0, keyHeight, 1f).apply {
+                    setMargins(2, 3, 2, 3)
+                }
+            )
         }
     }
 
@@ -217,18 +221,19 @@ class QuickKeyboardService : InputMethodService() {
 
             val prefs = getSharedPreferences("settings", MODE_PRIVATE)
 
-            val seq = if (alphabetMode) {
+            val sequence = if (alphabetMode) {
                 prefs.getString("letters", "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
                     ?: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
             } else {
                 prefs.getString("numbers", "12456") ?: "12456"
             }
 
-            if (seq.isNotEmpty()) {
+            if (sequence.isNotEmpty()) {
                 val count = if (twoChars) 2 else 1
+
                 val value = buildString {
                     repeat(count) {
-                        append(seq[index++ % seq.length])
+                        append(sequence[index++ % sequence.length])
                     }
                 }
 
