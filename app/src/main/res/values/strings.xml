@@ -1,5 +1,0 @@
-
-<resources>
-    <string name="app_name">Yalla Quick Send</string>
-    <string name="accessibility_description">Allows Yalla Quick Send to access visible screen content and interact with the send control when requested.</string>
-</resources>
