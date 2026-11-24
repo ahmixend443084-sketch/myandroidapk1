@@ -17,7 +17,7 @@
         </activity>
 
         <service
-            android:name=".QuickAccessibilityService"
+            android:name=".YallaAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
 
