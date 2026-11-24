@@ -31,7 +31,7 @@
         </service>
 
         <service
-            android:name=".YallaKeyboardService"
+            android:name=".QuickKeyboardService"
             android:label="FLASH🌙 Keyboard"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:exported="true">
