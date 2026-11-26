@@ -14,7 +14,6 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import java.util.ArrayDeque
 
@@ -33,6 +32,7 @@ class QuickKeyboardService : InputMethodService() {
     private var alphabetCount = 1
 
     private lateinit var keyboardRoot: LinearLayout
+    private var keyboardRows: LinearLayout? = null
 
     private val pendingCharacters = ArrayDeque<String>()
     private var autoSendInProgress = false
@@ -68,10 +68,7 @@ class QuickKeyboardService : InputMethodService() {
         super.onStartInputView(info, restarting)
         loadSettings()
         stopped = false
-
-        if (::keyboardRoot.isInitialized) {
-            renderKeys()
-        }
+        renderKeys()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -92,264 +89,159 @@ class QuickKeyboardService : InputMethodService() {
     private fun buildKeyboard(): View {
         keyboardRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
             setPadding(dp(4), dp(4), dp(4), dp(4))
             setBackgroundColor(Color.rgb(20, 20, 29))
         }
 
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        keyboardRows = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
         }
 
-        val title = TextView(this).apply {
-            text = "𝙁𝙇𝘼𝙎𝙃🌙"
-            textSize = 19f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.rgb(190, 160, 255))
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        header.addView(
-            title,
-            LinearLayout.LayoutParams(0, dp(38), 1f)
+        keyboardRoot.addView(
+            keyboardRows,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         )
 
-        header.addView(
-            makeButton(
-                if (uppercaseMode) "abc" else "ABC",
-                12f
-            ) {
-                if (numbersMode) {
-                    numbersMode = false
-                } else {
-                    uppercaseMode = !uppercaseMode
-                    prefs.edit()
-                        .putBoolean("uppercaseMode", uppercaseMode)
-                        .apply()
-                }
-                renderKeys()
-            },
-            smallButtonParams()
-        )
-
-        header.addView(
-            makeButton("123", 12f) {
-                numbersMode = true
-                renderKeys()
-            },
-            smallButtonParams()
-        )
-
-        keyboardRoot.addView(header)
         renderKeys()
-
         return keyboardRoot
     }
 
     private fun renderKeys() {
         if (!::keyboardRoot.isInitialized) return
 
-        while (keyboardRoot.childCount > 1) {
-            keyboardRoot.removeViewAt(1)
-        }
+        loadSettings()
+
+        val rows = keyboardRows ?: return
+        rows.removeAllViews()
 
         if (numbersMode) {
-            renderNumberPad()
+            renderNumberPad(rows)
         } else {
-            renderAlphabetKeys()
+            renderAlphabetKeys(rows)
         }
     }
 
-    private fun renderAlphabetKeys() {
+    /*
+     * Dono modes mein exactly 4 rows hoti hain.
+     * Har row ki height keyboardSize se aati hai.
+     * Isliye ABC/NUM switch karne par keyboard ki
+     * row height aur total row count same rehte hain.
+     */
+
+    private fun renderAlphabetKeys(rows: LinearLayout) {
         addKeyRow(
+            rows,
             listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
         )
 
         addKeyRow(
+            rows,
             listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
         )
 
         addKeyRow(
+            rows,
             listOf("z", "x", "c", "v", "b", "n", "m")
         )
 
-        val bottom = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+        addKeyRow(
+            rows,
+            listOf("123", "⌫", "SPACE", "SEND"),
+            weights = listOf(1f, 1f, 2.5f, 1.3f)
+        ) { key ->
+            when (key) {
+                "123" -> {
+                    numbersMode = true
+                    renderKeys()
+                }
+                "⌫" -> deleteCharacter()
+                "SPACE" -> typeText(" ")
+                "SEND" -> handleEnter()
+            }
         }
-
-        bottom.addView(
-            makeButton("⌫", 20f) {
-                deleteCharacter()
-            },
-            keyParams(1f)
-        )
-
-        bottom.addView(
-            makeButton("SPACE", 12f) {
-                typeText(" ")
-            },
-            keyParams(3f)
-        )
-
-        bottom.addView(
-            makeButton("SEND", 14f, true) {
-                handleEnter()
-            },
-            keyParams(1.5f)
-        )
-
-        keyboardRoot.addView(
-            bottom,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyHeight())
-            )
-        )
     }
 
-    private fun renderNumberPad() {
-        val body = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
+    private fun renderNumberPad(rows: LinearLayout) {
+        addKeyRow(rows, listOf("1", "2", "3")) { typeText(it) }
+        addKeyRow(rows, listOf("4", "5", "6")) { typeText(it) }
+        addKeyRow(rows, listOf("7", "8", "9")) { typeText(it) }
 
-        val numberColumn = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        val numberRows = listOf(
-            listOf("1", "2", "3"),
-            listOf("4", "5", "6"),
-            listOf("7", "8", "9"),
-            listOf("*", "0", "#")
-        )
-
-        numberRows.forEach { numbers ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
+        addKeyRow(
+            rows,
+            listOf("ABC", "⌫", "*", "0", "#", "SPACE", "SEND"),
+            weights = listOf(1.2f, 1f, 0.8f, 1f, 0.8f, 1.4f, 1.2f)
+        ) { key ->
+            when (key) {
+                "ABC" -> {
+                    numbersMode = false
+                    renderKeys()
+                }
+                "⌫" -> deleteCharacter()
+                "SPACE" -> typeText(" ")
+                "SEND" -> handleEnter()
+                else -> typeText(key)
             }
-
-            numbers.forEach { number ->
-                row.addView(
-                    makeButton(number, 19f) {
-                        typeText(number)
-                    },
-                    keyParams(1f)
-                )
-            }
-
-            numberColumn.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    0,
-                    1f
-                )
-            )
         }
-
-        body.addView(
-            numberColumn,
-            LinearLayout.LayoutParams(0, dp(184), 3f)
-        )
-
-        val actionColumn = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        actionColumn.addView(
-            makeButton("⌫", 23f) {
-                deleteCharacter()
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            ).apply {
-                setMargins(dp(2), dp(2), dp(2), dp(2))
-            }
-        )
-
-        actionColumn.addView(
-            makeButton("SEND", 13f, true) {
-                handleEnter()
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                2f
-            ).apply {
-                setMargins(dp(2), dp(2), dp(2), dp(2))
-            }
-        )
-
-        body.addView(
-            actionColumn,
-            LinearLayout.LayoutParams(0, dp(184), 1f)
-        )
-
-        keyboardRoot.addView(body)
-
-        val bottom = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-
-        bottom.addView(
-            makeButton(
-                if (uppercaseMode) "abc" else "ABC",
-                12f
-            ) {
-                numbersMode = false
-                renderKeys()
-            },
-            keyParams(1f)
-        )
-
-        bottom.addView(
-            makeButton("SPACE", 12f) {
-                typeText(" ")
-            },
-            keyParams(2f)
-        )
-
-        keyboardRoot.addView(bottom)
     }
 
-    private fun addKeyRow(keys: List<String>) {
+    private fun addKeyRow(
+        parent: LinearLayout,
+        keys: List<String>,
+        weights: List<Float> = List(keys.size) { 1f },
+        customAction: ((String) -> Unit)? = null
+    ) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
 
-        keys.forEach { key ->
-            val displayKey = if (uppercaseMode) {
-                key.uppercase()
-            } else {
-                key.lowercase()
+        keys.forEachIndexed { index, key ->
+            val displayKey = when {
+                key.length == 1 && key[0].isLetter() ->
+                    if (uppercaseMode) key.uppercase() else key.lowercase()
+                else -> key
+            }
+
+            val button = makeButton(
+                displayKey,
+                when (key) {
+                    "SPACE" -> 11f
+                    "SEND" -> 12f
+                    "123", "ABC" -> 12f
+                    "⌫" -> 18f
+                    else -> keyTextSize()
+                },
+                highlighted = key == "SEND"
+            ) {
+                if (customAction != null) {
+                    customAction(key)
+                } else {
+                    typeText(displayKey)
+                }
             }
 
             row.addView(
-                makeButton(displayKey, keyTextSize()) {
-                    typeText(displayKey)
-                },
+                button,
                 LinearLayout.LayoutParams(
                     0,
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    1f
+                    dp(keyHeight()),
+                    weights.getOrElse(index) { 1f }
                 ).apply {
                     setMargins(dp(2), dp(2), dp(2), dp(2))
                 }
             )
         }
 
-        keyboardRoot.addView(
+        parent.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(61)
+                dp(keyHeight() + 4)
             )
         )
     }
@@ -364,6 +256,7 @@ class QuickKeyboardService : InputMethodService() {
             text = label
             this.textSize = textSize
             isAllCaps = false
+            typeface = Typeface.DEFAULT
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
 
@@ -373,6 +266,7 @@ class QuickKeyboardService : InputMethodService() {
             minimumHeight = 0
 
             setPadding(dp(1), dp(1), dp(1), dp(1))
+            stateListAnimator = null
 
             background = GradientDrawable().apply {
                 cornerRadius = dp(7).toFloat()
@@ -391,30 +285,8 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    private fun keyParams(weight: Float): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            0,
-            dp(keyHeight()),
-            weight
-        ).apply {
-            setMargins(dp(2), dp(2), dp(2), dp(2))
-        }
-    }
-
-    private fun smallButtonParams(): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            dp(45),
-            dp(36)
-        ).apply {
-            setMargins(dp(2), dp(1), dp(2), dp(1))
-        }
-    }
-
-    // Auto Drop OFF: normal typing.
-    // Auto Drop ON: count ke mutabiq characters ka group send hota hai.
     private fun typeText(value: String) {
         loadSettings()
-
         if (stopped) return
 
         val connection = currentInputConnection ?: return
@@ -424,7 +296,6 @@ class QuickKeyboardService : InputMethodService() {
             return
         }
 
-        // Auto Drop mein spaces ko automatic message na banayein.
         if (value.isBlank()) return
 
         pendingCharacters.addLast(value)
@@ -457,12 +328,7 @@ class QuickKeyboardService : InputMethodService() {
         if (group.isEmpty()) return
 
         autoSendInProgress = true
-
         connection.commitText(group.toString(), 1)
-
-        // Manual delay setting 0 se 1000 ms tak apply hogi.
-        // 0 ms par unnecessary 300 ms wait nahi hoga.
-        val actualDelay = delayMs.coerceIn(0, 1000)
 
         handler.postDelayed({
             try {
@@ -473,14 +339,13 @@ class QuickKeyboardService : InputMethodService() {
                 autoSendInProgress = false
                 processNextAutoSend()
             }
-        }, actualDelay.toLong())
+        }, delayMs.coerceIn(0, 1000).toLong())
     }
 
     private fun deleteCharacter() {
         if (stopped) return
 
         val connection = currentInputConnection ?: return
-
         val deleted = connection.deleteSurroundingText(1, 0)
 
         if (!deleted) {
@@ -543,10 +408,6 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    }
-
     private fun keyTextSize(): Float {
         return when (keyboardSize) {
             0 -> 12f
@@ -561,6 +422,10 @@ class QuickKeyboardService : InputMethodService() {
             2 -> 48
             else -> 42
         }
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun dp(value: Int): Int {
