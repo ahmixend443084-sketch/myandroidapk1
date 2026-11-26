@@ -85,6 +85,10 @@ class QuickKeyboardService : InputMethodService() {
         if (::keyboardRoot.isInitialized) {
             renderKeys()
         }
+
+        if (autoDrop) {
+            handler.postDelayed(autoSendTask, delayMs.toLong())
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -140,6 +144,7 @@ class QuickKeyboardService : InputMethodService() {
 
         keyboardRoot.addView(header)
         renderKeys()
+
         return keyboardRoot
     }
 
@@ -158,6 +163,7 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun renderAlphabetKeys() {
+        // Alphabet keyboard ki 3 letter rows.
         addKeyRow(listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"))
         addKeyRow(listOf("A", "S", "D", "F", "G", "H", "J", "K", "L"))
         addKeyRow(listOf("Z", "X", "C", "V", "B", "N", "M"))
@@ -168,21 +174,34 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         bottom.addView(
-            makeButton("⌫", 20f) { deleteCharacter() },
+            makeButton("⌫", 20f) {
+                deleteCharacter()
+            },
             keyParams(1f)
         )
 
         bottom.addView(
-            makeButton("SPACE", 12f) { typeText(" ") },
+            makeButton("SPACE", 12f) {
+                typeText(" ")
+            },
             keyParams(3f)
         )
 
         bottom.addView(
-            makeButton("SEND", 14f, true) { handleEnter() },
+            makeButton("SEND", 14f, true) {
+                handleEnter()
+            },
             keyParams(1.5f)
         )
 
-        keyboardRoot.addView(bottom)
+        // Bottom row ki height number pad ki total body ke barabar.
+        keyboardRoot.addView(
+            bottom,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(184)
+            )
+        )
     }
 
     private fun renderNumberPad() {
@@ -210,7 +229,9 @@ class QuickKeyboardService : InputMethodService() {
 
             numbers.forEach { number ->
                 row.addView(
-                    makeButton(number, 19f) { typeText(number) },
+                    makeButton(number, 19f) {
+                        typeText(number)
+                    },
                     keyParams(1f)
                 )
             }
@@ -235,7 +256,9 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         actionColumn.addView(
-            makeButton("⌫", 23f) { deleteCharacter() },
+            makeButton("⌫", 23f) {
+                deleteCharacter()
+            },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -246,7 +269,9 @@ class QuickKeyboardService : InputMethodService() {
         )
 
         actionColumn.addView(
-            makeButton("SEND", 13f, true) { handleEnter() },
+            makeButton("SEND", 13f, true) {
+                handleEnter()
+            },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -265,6 +290,7 @@ class QuickKeyboardService : InputMethodService() {
 
         val bottom = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
         }
 
         bottom.addView(
@@ -276,7 +302,9 @@ class QuickKeyboardService : InputMethodService() {
         )
 
         bottom.addView(
-            makeButton("SPACE", 12f) { typeText(" ") },
+            makeButton("SPACE", 12f) {
+                typeText(" ")
+            },
             keyParams(2f)
         )
 
@@ -298,7 +326,14 @@ class QuickKeyboardService : InputMethodService() {
             )
         }
 
-        keyboardRoot.addView(row)
+        // Har alphabet row ko equal height.
+        keyboardRoot.addView(
+            row,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(46)
+            )
+        )
     }
 
     private fun makeButton(
@@ -313,10 +348,12 @@ class QuickKeyboardService : InputMethodService() {
             isAllCaps = false
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
+
             minWidth = 0
             minimumWidth = 0
             minHeight = 0
             minimumHeight = 0
+
             setPadding(dp(1), dp(1), dp(1), dp(1))
 
             background = GradientDrawable().apply {
@@ -330,7 +367,9 @@ class QuickKeyboardService : InputMethodService() {
                 )
             }
 
-            setOnClickListener { action() }
+            setOnClickListener {
+                action()
+            }
         }
     }
 
@@ -377,7 +416,6 @@ class QuickKeyboardService : InputMethodService() {
         loadSettings()
 
         if (enterSend) {
-            // Manual Enter: saved position ko foran tap karo.
             sendManualAction()
         } else {
             sendEnterKey()
@@ -390,7 +428,6 @@ class QuickKeyboardService : InputMethodService() {
         connection.sendKeyEvent(
             KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)
         )
-
         connection.sendKeyEvent(
             KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER)
         )
@@ -400,6 +437,7 @@ class QuickKeyboardService : InputMethodService() {
         val service = YallaAccessibilityService.instance
 
         if (service == null) {
+            sendEnterKey()
             showToast("FLASH: Accessibility Service ON karo")
             return
         }
@@ -411,9 +449,11 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         if (!sent) {
+            sendEnterKey()
+
             showToast(
                 if (service.hasSavedSendPosition()) {
-                    "FLASH: Saved position par tap nahi hua"
+                    "FLASH: Tap fail hua; Enter try kiya"
                 } else {
                     "FLASH: Send button nahi mila; position set karo"
                 }
