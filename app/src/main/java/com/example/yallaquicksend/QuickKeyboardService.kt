@@ -28,7 +28,8 @@ class QuickKeyboardService : InputMethodService() {
     private var enterSend = true
     private var stopped = false
     private var keyboardSize = 1
-    private var delayMs = 100
+    private var delayMs = 0
+    private var alphabetCount = 1
 
     private lateinit var keyboardRoot: LinearLayout
 
@@ -49,7 +50,8 @@ class QuickKeyboardService : InputMethodService() {
         speedBased = prefs.getBoolean("speedBased", true)
         enterSend = prefs.getBoolean("enterSend", true)
         keyboardSize = prefs.getInt("keyboardSize", 1).coerceIn(0, 2)
-        delayMs = prefs.getInt("delay", 100).coerceIn(100, 1000)
+        delayMs = prefs.getInt("delay", 0).coerceIn(0, 1000)
+        alphabetCount = prefs.getInt("alphabetCount", 1).coerceIn(1, 3)
     }
 
     override fun onCreateInputView(): View {
@@ -377,20 +379,22 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    // Auto Drop ON: har typed character ko alag send queue mein rakho.
-    // Auto Drop OFF: normal keyboard typing.
+    // Auto Drop OFF: normal typing.
+    // Auto Drop ON: selected count ke characters ka group ek baar send hoga.
     private fun typeText(value: String) {
         loadSettings()
 
         val connection = currentInputConnection ?: return
 
-        if (!autoDrop) {
+        if (!autoDrop || stopped) {
             connection.commitText(value, 1)
             return
         }
 
-        // Auto mode mein space ko alag message bana kar send nahi karna.
-        if (value.isBlank()) return
+        // Auto Drop mode mein spaces ko automatic message na banayein.
+        if (value.isBlank()) {
+            return
+        }
 
         pendingCharacters.addLast(value)
         processNextAutoSend()
@@ -406,28 +410,40 @@ class QuickKeyboardService : InputMethodService() {
             return
         }
 
+        // Count ke mutabiq poora group aane ka intezar.
+        if (pendingCharacters.size < alphabetCount) return
+
         val connection = currentInputConnection ?: return
-        val character = pendingCharacters.removeFirst()
+
+        val group = StringBuilder()
+
+        repeat(alphabetCount) {
+            if (pendingCharacters.isNotEmpty()) {
+                group.append(pendingCharacters.removeFirst())
+            }
+        }
+
+        if (group.isEmpty()) return
 
         autoSendInProgress = true
 
-        // Pehle sirf ek character input field mein likho.
-        connection.commitText(character, 1)
+        // Group ko input field mein ek hi baar likho.
+        connection.commitText(group.toString(), 1)
 
-        // Input field ko update hone ka waqt do.
+        // Delay 0 ms bhi allowed hai.
+        val actualDelay = if (speedBased) delayMs else 300
+
         handler.postDelayed({
             if (autoDrop && !stopped) {
                 sendAutomaticAction()
             }
 
-            // Agla character tab process hoga jab pichla send action
-            // trigger ho chuka ho.
-            handler.postDelayed({
-                autoSendInProgress = false
-                processNextAutoSend()
-            }, 250L)
+            autoSendInProgress = false
 
-        }, 150L)
+            // Agar agla group queue mein hai to use process karo.
+            processNextAutoSend()
+
+        }, actualDelay.toLong())
     }
 
     private fun deleteCharacter() {
@@ -474,20 +490,10 @@ class QuickKeyboardService : InputMethodService() {
             return
         }
 
-        val sent = if (service.hasSavedSendPosition()) {
+        if (service.hasSavedSendPosition()) {
             service.tapSavedSendPosition()
         } else {
             service.clickVisibleSend()
-        }
-
-        if (!sent) {
-            showToast(
-                if (service.hasSavedSendPosition()) {
-                    "FLASH: Saved position par tap nahi hua"
-                } else {
-                    "FLASH: Send button nahi mila; position set karo"
-                }
-            )
         }
     }
 
