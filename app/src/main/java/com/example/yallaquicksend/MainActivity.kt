@@ -4,6 +4,7 @@ package com.example.yallaquicksend
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -51,7 +52,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         buildScreen()
         loadSettings()
     }
@@ -132,9 +132,7 @@ class MainActivity : Activity() {
 
         val panelCard = makeCard()
 
-        panelSwitch = makeCheckBox(
-            "FLASH Floating Panel ON/OFF"
-        )
+        panelSwitch = makeCheckBox("FLASH Floating Panel ON/OFF")
         panelCard.addView(panelSwitch)
 
         val panelHint = label(
@@ -400,9 +398,7 @@ class MainActivity : Activity() {
 
     private fun stopOverlay() {
         try {
-            stopService(
-                Intent(this, ModOverlayService::class.java)
-            )
+            stopService(Intent(this, ModOverlayService::class.java))
         } catch (_: Exception) {
             toast("Panel band nahi ho saka")
         }
@@ -476,7 +472,6 @@ class MainActivity : Activity() {
                 dp(18),
                 Color.rgb(65, 48, 95)
             )
-
             elevation = dp(3).toFloat()
 
             layoutParams = LinearLayout.LayoutParams(
@@ -502,9 +497,7 @@ class MainActivity : Activity() {
             this.text = text
             textSize = 14f
             setTextColor(white)
-            buttonTintList = android.content.res.ColorStateList.valueOf(
-                purple
-            )
+            buttonTintList = ColorStateList.valueOf(purple)
             setPadding(dp(2), dp(5), 0, dp(5))
         }
     }
@@ -514,15 +507,14 @@ class MainActivity : Activity() {
         hintText: String,
         defaultValue: String
     ): EditText {
-        val caption = label(hintText)
-        parent.addView(caption)
+        parent.addView(label(hintText))
 
         val field = EditText(this).apply {
             hint = defaultValue
             setTextColor(white)
             setHintTextColor(muted)
             textSize = 14f
-            singleLine = true
+            isSingleLine = true
             setPadding(dp(12), dp(8), dp(12), dp(8))
             background = rounded(
                 Color.rgb(21, 17, 34),
