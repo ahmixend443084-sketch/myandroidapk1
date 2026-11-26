@@ -68,8 +68,13 @@ class MainActivity : Activity() {
             setBackgroundColor(bg)
         }
 
-        // FIX: ScrollView.LayoutParams ki jagah direct addView
-        scroll.addView(root)
+        scroll.addView(
+            root,
+            ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT,
+                ScrollView.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         setContentView(scroll)
 
@@ -122,7 +127,7 @@ class MainActivity : Activity() {
         }
         root.addView(subtitle)
 
-        // MAIN PANEL
+        // MAIN CONTROL
         section("MAIN CONTROL")
 
         val panelCard = makeCard()
@@ -138,7 +143,9 @@ class MainActivity : Activity() {
         panelCard.addView(panelHint)
 
         panelSwitch.setOnCheckedChangeListener { _, checked ->
-            prefs.edit().putBoolean("panelSwitch", checked).apply()
+            prefs.edit()
+                .putBoolean("panelSwitch", checked)
+                .apply()
 
             if (checked) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
@@ -231,7 +238,7 @@ class MainActivity : Activity() {
 
         root.addView(speedCard)
 
-        // SAVE
+        // SAVE SETTINGS
         section("SAVE SETTINGS")
 
         val saveCard = makeCard()
@@ -360,9 +367,18 @@ class MainActivity : Activity() {
             .putBoolean("autoDrop", autoDrop.isChecked)
             .putBoolean("speedBased", speedBased.isChecked)
             .putBoolean("enterSend", enterSend.isChecked)
-            .putInt("keyboardSize", keyboardSizeValue.coerceIn(50, 200))
-            .putInt("digitCount", digitCountValue.coerceIn(1, 100))
-            .putInt("alphabetCount", alphabetCountValue.coerceIn(1, 100))
+            .putInt(
+                "keyboardSize",
+                keyboardSizeValue.coerceIn(50, 200)
+            )
+            .putInt(
+                "digitCount",
+                digitCountValue.coerceIn(1, 100)
+            )
+            .putInt(
+                "alphabetCount",
+                alphabetCountValue.coerceIn(1, 100)
+            )
             .putString(
                 "numberSequence",
                 numberSequence.text.toString()
@@ -371,21 +387,22 @@ class MainActivity : Activity() {
                 "alphabetSequence",
                 alphabetSequence.text.toString()
             )
-            .putInt("delay", delayValue.coerceIn(0, 5000))
+            .putInt(
+                "delay",
+                delayValue.coerceIn(0, 5000)
+            )
             .apply()
 
         toast("Settings save ho gayi")
     }
 
+    // OVERLAY SERVICE
+    // Foreground notification ke baghair startForegroundService
+    // timeout crash ka sabab ban sakta hai.
     private fun startOverlay() {
         try {
             val intent = Intent(this, ModOverlayService::class.java)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
+            startService(intent)
         } catch (e: Exception) {
             toast("Floating panel start nahi hua: ${e.message}")
         }
@@ -393,7 +410,9 @@ class MainActivity : Activity() {
 
     private fun stopOverlay() {
         try {
-            stopService(Intent(this, ModOverlayService::class.java))
+            stopService(
+                Intent(this, ModOverlayService::class.java)
+            )
         } catch (_: Exception) {
             toast("Panel band nahi ho saka")
         }
@@ -462,11 +481,13 @@ class MainActivity : Activity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(12))
+
             background = rounded(
                 card,
                 dp(18),
                 Color.rgb(65, 48, 95)
             )
+
             elevation = dp(3).toFloat()
 
             layoutParams = LinearLayout.LayoutParams(
@@ -510,7 +531,14 @@ class MainActivity : Activity() {
             setHintTextColor(muted)
             textSize = 14f
             isSingleLine = true
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+
+            setPadding(
+                dp(12),
+                dp(8),
+                dp(12),
+                dp(8)
+            )
+
             background = rounded(
                 Color.rgb(21, 17, 34),
                 dp(10),
@@ -569,7 +597,9 @@ class MainActivity : Activity() {
     }
 
     private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
+        return (
+            value * resources.displayMetrics.density
+        ).toInt()
     }
 
     private fun toast(message: String) {
