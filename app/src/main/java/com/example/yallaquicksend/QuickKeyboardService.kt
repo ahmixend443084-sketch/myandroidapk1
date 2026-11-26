@@ -1,11 +1,11 @@
 
 package com.example.yallaquicksend
 
-import android.inputmethodservice.InputMethodService
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -25,11 +25,12 @@ class QuickKeyboardService : InputMethodService() {
     private var autoDrop = false
     private var speedBased = true
     private var enterSend = true
-    private var stopped = false
+    private var stopped = true
 
-    private var keyboardSize = 1
+    // MainActivity stores keyboard size as a percentage, e.g. 100.
+    private var keyboardSize = 100
     private var delayMs = 0
-    private var alphabetCount = 1
+    private var alphabetCount = 26
 
     private lateinit var keyboardRoot: LinearLayout
     private var keyboardRows: LinearLayout? = null
@@ -37,6 +38,8 @@ class QuickKeyboardService : InputMethodService() {
     private var autoDropCount = 0
     private var pendingAutoSends = 0
     private var autoSendInProgress = false
+
+    private val maxPendingAutoSends = 20
 
     private val prefs by lazy {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -55,9 +58,16 @@ class QuickKeyboardService : InputMethodService() {
         autoDrop = prefs.getBoolean("autoDrop", false)
         speedBased = prefs.getBoolean("speedBased", true)
         enterSend = prefs.getBoolean("enterSend", true)
-        keyboardSize = prefs.getInt("keyboardSize", 1).coerceIn(0, 2)
-        delayMs = prefs.getInt("delay", 0).coerceIn(0, 60000)
-        alphabetCount = prefs.getInt("alphabetCount", 1).coerceIn(1, 3)
+
+        keyboardSize = prefs.getInt("keyboardSize", 100)
+            .coerceIn(50, 200)
+
+        delayMs = prefs.getInt("delay", 0)
+            .coerceIn(0, 5000)
+
+        alphabetCount = prefs.getInt("alphabetCount", 26)
+            .coerceIn(1, 100)
+
         uppercaseMode = prefs.getBoolean("uppercaseMode", false)
     }
 
@@ -72,6 +82,7 @@ class QuickKeyboardService : InputMethodService() {
         restarting: Boolean
     ) {
         super.onStartInputView(info, restarting)
+
         loadSettings()
         stopped = false
 
@@ -81,14 +92,14 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        stopPendingActions()
         stopped = true
+        stopPendingActions()
         super.onFinishInputView(finishingInput)
     }
 
     override fun onDestroy() {
-        stopPendingActions()
         stopped = true
+        stopPendingActions()
         super.onDestroy()
     }
 
@@ -104,6 +115,7 @@ class QuickKeyboardService : InputMethodService() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(5), dp(5), dp(5))
+
             background = GradientDrawable().apply {
                 cornerRadius = dp(17).toFloat()
                 setColor(Color.rgb(20, 21, 27))
@@ -129,9 +141,10 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun renderKeys() {
-        if (!::keyboardRoot.isInitialized) return
+        if (!::keyboardRoot.isInitialized || stopped) return
 
         loadSettings()
+
         val rows = keyboardRows ?: return
         rows.removeAllViews()
 
@@ -190,7 +203,8 @@ class QuickKeyboardService : InputMethodService() {
     ) {
         val button = makeButton(
             label,
-            if (label.length > 2) 14f else 19f,
+            if (label.length > 2) scaledTextSize(14f)
+            else scaledTextSize(19f),
             active,
             action
         )
@@ -204,8 +218,15 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun renderAlphabetKeys(rows: LinearLayout) {
-        addKeyRow(rows, listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"))
-        addKeyRow(rows, listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"))
+        addKeyRow(
+            rows,
+            listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
+        )
+
+        addKeyRow(
+            rows,
+            listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
+        )
 
         addKeyRow(
             rows,
@@ -215,11 +236,20 @@ class QuickKeyboardService : InputMethodService() {
             when (key) {
                 "SHIFT" -> {
                     uppercaseMode = !uppercaseMode
-                    prefs.edit().putBoolean("uppercaseMode", uppercaseMode).apply()
+
+                    prefs.edit()
+                        .putBoolean("uppercaseMode", uppercaseMode)
+                        .apply()
+
                     renderKeys()
                 }
+
                 "⌫" -> deleteCharacter()
-                else -> typeText(if (uppercaseMode) key.uppercase() else key)
+
+                else -> typeText(
+                    if (uppercaseMode) key.uppercase()
+                    else key
+                )
             }
         }
 
@@ -233,6 +263,7 @@ class QuickKeyboardService : InputMethodService() {
                     numbersMode = true
                     renderKeys()
                 }
+
                 "," -> typeText(",")
                 "SPACE" -> typeText(" ")
                 "." -> typeText(".")
@@ -258,12 +289,18 @@ class QuickKeyboardService : InputMethodService() {
             listOf("7", "8", "9"),
             listOf("-", "0", ".")
         ).forEach { keys ->
-            addKeyRow(grid, keys) { typeText(it) }
+            addKeyRow(grid, keys) {
+                typeText(it)
+            }
         }
 
         content.addView(
             grid,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3f)
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                3f
+            )
         )
 
         val actions = LinearLayout(this).apply {
@@ -272,7 +309,9 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         actions.addView(
-            makeButton("⌫", 25f) { deleteCharacter() },
+            makeButton("⌫", scaledTextSize(25f)) {
+                deleteCharacter()
+            },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(keyHeight())
@@ -282,7 +321,9 @@ class QuickKeyboardService : InputMethodService() {
         )
 
         actions.addView(
-            makeButton("➤\nSEND", 21f, true) { handleEnter() },
+            makeButton("➤\nSEND", scaledTextSize(17f), true) {
+                handleEnter()
+            },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -325,22 +366,29 @@ class QuickKeyboardService : InputMethodService() {
             val display = when (key) {
                 "SHIFT" -> if (uppercaseMode) "⬆" else "⇧"
                 "SPACE" -> "English"
+
                 else -> if (key.length == 1 && key[0].isLetter()) {
-                    if (uppercaseMode) key.uppercase() else key
-                } else key
+                    if (uppercaseMode) key.uppercase()
+                    else key
+                } else {
+                    key
+                }
             }
 
             val size = when (key) {
-                "SPACE" -> 11f
-                "SEND", "?123" -> 12f
-                "SHIFT", "⌫" -> 19f
+                "SPACE" -> scaledTextSize(11f)
+                "SEND", "?123" -> scaledTextSize(12f)
+                "SHIFT", "⌫" -> scaledTextSize(19f)
                 else -> keyTextSize()
             }
 
             row.addView(
                 makeButton(display, size, key == "SEND") {
-                    if (customAction != null) customAction(key)
-                    else typeText(display)
+                    if (customAction != null) {
+                        customAction(key)
+                    } else {
+                        typeText(display)
+                    }
                 },
                 LinearLayout.LayoutParams(
                     0,
@@ -374,10 +422,12 @@ class QuickKeyboardService : InputMethodService() {
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(textColor)
             gravity = Gravity.CENTER
+
             minWidth = 0
             minimumWidth = 0
             minHeight = 0
             minimumHeight = 0
+
             setPadding(dp(1), dp(1), dp(1), dp(1))
             stateListAnimator = null
 
@@ -393,12 +443,11 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     /**
-     * Commit text immediately. No send-delay wait is applied to typing.
+     * Typing stays immediate.
+     * Delay is applied only to queued automatic send actions.
      */
     private fun typeText(value: String) {
         if (stopped || value.isEmpty()) return
-
-        loadSettings()
 
         val connection = currentInputConnection ?: return
         connection.commitText(value, 1)
@@ -420,13 +469,19 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun queueAutomaticSend() {
-        if (stopped) return
+        if (stopped || !autoDrop) return
+
+        // Prevent an unlimited queue from building up.
+        if (pendingAutoSends >= maxPendingAutoSends) return
+
         pendingAutoSends++
         processAutoSendQueue()
     }
 
     private fun processAutoSendQueue() {
-        if (stopped || autoSendInProgress || pendingAutoSends <= 0) return
+        if (stopped || autoSendInProgress || pendingAutoSends <= 0) {
+            return
+        }
 
         loadSettings()
 
@@ -438,29 +493,48 @@ class QuickKeyboardService : InputMethodService() {
 
         autoSendInProgress = true
 
+        // A tiny minimum gap avoids flooding the main thread when delay is 0.
+        val waitMs = if (speedBased) {
+            delayMs.coerceAtLeast(15)
+        } else {
+            delayMs.coerceAtLeast(50)
+        }
+
         handler.postDelayed({
             try {
-                if (!stopped && autoDrop) sendAutomaticAction()
+                if (!stopped && autoDrop) {
+                    sendAutomaticAction()
+                }
             } finally {
-                pendingAutoSends = (pendingAutoSends - 1).coerceAtLeast(0)
+                pendingAutoSends =
+                    (pendingAutoSends - 1).coerceAtLeast(0)
+
                 autoSendInProgress = false
                 processAutoSendQueue()
             }
-        }, delayMs.coerceIn(0, 60000).toLong())
+        }, waitMs.toLong())
     }
 
     private fun deleteCharacter() {
         if (stopped) return
 
         val connection = currentInputConnection ?: return
+
         val deleted = connection.deleteSurroundingText(1, 0)
 
         if (!deleted) {
             connection.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)
+                KeyEvent(
+                    KeyEvent.ACTION_DOWN,
+                    KeyEvent.KEYCODE_DEL
+                )
             )
+
             connection.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL)
+                KeyEvent(
+                    KeyEvent.ACTION_UP,
+                    KeyEvent.KEYCODE_DEL
+                )
             )
         }
     }
@@ -469,17 +543,29 @@ class QuickKeyboardService : InputMethodService() {
         if (stopped) return
 
         loadSettings()
-        if (enterSend) sendManualAction() else sendEnterKey()
+
+        if (enterSend) {
+            sendManualAction()
+        } else {
+            sendEnterKey()
+        }
     }
 
     private fun sendEnterKey() {
         val connection = currentInputConnection ?: return
 
         connection.sendKeyEvent(
-            KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)
+            KeyEvent(
+                KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_ENTER
+            )
         )
+
         connection.sendKeyEvent(
-            KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER)
+            KeyEvent(
+                KeyEvent.ACTION_UP,
+                KeyEvent.KEYCODE_ENTER
+            )
         )
     }
 
@@ -492,13 +578,16 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         val sent = if (service.hasSavedSendPosition()) {
-            service.tapSavedSendPosition() || service.clickVisibleSend()
+            service.tapSavedSendPosition() ||
+                service.clickVisibleSend()
         } else {
             service.clickVisibleSend()
         }
 
         if (!sent) {
-            showToast("Send nahi hua: Yalla screen aur saved position check karo")
+            showToast(
+                "Send nahi hua: Yalla screen aur saved position check karo"
+            )
         }
     }
 
@@ -508,32 +597,38 @@ class QuickKeyboardService : InputMethodService() {
         val service = YallaAccessibilityService.instance ?: return
 
         if (service.hasSavedSendPosition()) {
-            service.tapSavedSendPosition() || service.clickVisibleSend()
+            service.tapSavedSendPosition() ||
+                service.clickVisibleSend()
         } else {
             service.clickVisibleSend()
         }
     }
 
-    private fun keyTextSize(): Float {
-        return when (keyboardSize) {
-            0 -> 12f
-            2 -> 19f
-            else -> 16f
-        }
+    private fun keyHeight(): Int {
+        val baseHeight = 42f
+        return (baseHeight * keyboardSize / 100f)
+            .toInt()
+            .coerceIn(28, 70)
     }
 
-    private fun keyHeight(): Int {
-        return when (keyboardSize) {
-            0 -> 36
-            2 -> 48
-            else -> 42
-        }
+    private fun scaledTextSize(baseSize: Float): Float {
+        return (baseSize * keyboardSize / 100f)
+            .coerceIn(9f, 30f)
+    }
+
+    private fun keyTextSize(): Float {
+        return scaledTextSize(16f)
     }
 
     private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
 }
