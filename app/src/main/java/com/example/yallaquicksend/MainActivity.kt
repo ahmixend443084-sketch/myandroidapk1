@@ -4,6 +4,7 @@ package com.example.yallaquicksend
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -66,7 +67,10 @@ class MainActivity : Activity() {
         val title = TextView(this).apply {
             text = "FLASH🌙"
             textSize = 34f
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = Typeface.create(
+                "sans-serif-black",
+                Typeface.BOLD
+            )
             gravity = Gravity.CENTER
             setTextColor(purple)
             setPadding(0, dp(20), 0, dp(4))
@@ -105,10 +109,8 @@ class MainActivity : Activity() {
             )
             background = roundedBackground(cardColor, 12)
         }
-        content.addView(
-            keyboardSize,
-            fieldLayout()
-        )
+
+        content.addView(keyboardSize, fieldLayout())
 
         content.addView(sectionTitle("SEND OPTIONS"))
 
@@ -140,23 +142,28 @@ class MainActivity : Activity() {
         content.addView(label("Number Count"))
         content.addView(digitCount, fieldLayout())
 
+        // QuickKeyboardService filhal alphabetCount ko 1-3 use karti hai.
         alphabetCount = editField(
             "Alphabet count",
-            prefs.getInt("alphabetCount", 26).toString(),
+            prefs.getInt("alphabetCount", 1)
+                .coerceIn(1, 3).toString(),
             false
         )
-        content.addView(label("Alphabet Count"))
+        content.addView(label("Alphabet Count (1-3)"))
         content.addView(alphabetCount, fieldLayout())
 
         numberSequence = editField(
             "Numbers sequence",
-            prefs.getString("numberSequence", "1234567890")
-                ?: "1234567890",
+            prefs.getString(
+                "numberSequence",
+                "1234567890"
+            ) ?: "1234567890",
             true
         )
         content.addView(label("Numbers Sequence"))
         content.addView(numberSequence, fieldLayout())
 
+        // Capital aur small letters dono manually likh sakte ho.
         alphabetSequence = editField(
             "Alphabet sequence",
             prefs.getString(
@@ -165,18 +172,28 @@ class MainActivity : Activity() {
             ) ?: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
             true
         )
-        content.addView(label("Alphabet Sequence"))
+        content.addView(label("Alphabet Sequence (ABC / abc)"))
         content.addView(alphabetSequence, fieldLayout())
 
         content.addView(sectionTitle("SPEED CONTROL"))
 
+        // Default delay 0 ms; user 0 bhi save kar sakta hai.
         delay = editField(
             "Delay in milliseconds",
-            prefs.getInt("delay", 100).toString(),
+            prefs.getInt("delay", 0).toString(),
             false
         )
         content.addView(label("Auto Drop Delay (ms)"))
         content.addView(delay, fieldLayout())
+
+        val delayInfo = TextView(this).apply {
+            text = "0 ms = no intentional waiting. " +
+                "Delay sirf Auto Drop ke sending process par apply hota hai."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(4), 0, dp(4), dp(8))
+        }
+        content.addView(delayInfo)
 
         content.addView(
             makeButton("SAVE SETTINGS", true) {
@@ -198,6 +215,7 @@ class MainActivity : Activity() {
                     val imm = getSystemService(
                         Context.INPUT_METHOD_SERVICE
                     ) as InputMethodManager
+
                     imm.showInputMethodPicker()
                 } catch (e: Exception) {
                     toast("Keyboard picker open nahi ho saka")
@@ -224,7 +242,10 @@ class MainActivity : Activity() {
                 if (Settings.canDrawOverlays(this)) {
                     try {
                         startService(
-                            Intent(this, ModOverlayService::class.java)
+                            Intent(
+                                this,
+                                ModOverlayService::class.java
+                            )
                         )
                         toast("FLASH panel start request bhej di")
                     } catch (e: Exception) {
@@ -240,7 +261,9 @@ class MainActivity : Activity() {
 
         content.addView(
             makeButton("ACCESSIBILITY SETTINGS") {
-                openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                openSettings(
+                    Settings.ACTION_ACCESSIBILITY_SETTINGS
+                )
             },
             buttonLayout()
         )
@@ -255,6 +278,7 @@ class MainActivity : Activity() {
         content.addView(footer)
 
         scroll.addView(content)
+
         root.addView(
             scroll,
             LinearLayout.LayoutParams(
@@ -295,7 +319,7 @@ class MainActivity : Activity() {
             text = textValue
             textSize = 15f
             setTextColor(white)
-            buttonTintList = android.content.res.ColorStateList.valueOf(purple)
+            buttonTintList = ColorStateList.valueOf(purple)
             isChecked = checked
             setPadding(dp(4), dp(5), dp(4), dp(5))
         }
@@ -317,11 +341,14 @@ class MainActivity : Activity() {
             background = roundedBackground(cardColor, 12)
 
             if (!allowText) {
-                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                inputType =
+                    android.text.InputType.TYPE_CLASS_NUMBER
             } else {
+                // Capital-only transformation hata di gayi hai.
+                // ABC aur abc dono enter kiye ja sakte hain.
                 inputType =
                     android.text.InputType.TYPE_CLASS_TEXT or
-                    android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+                    android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             }
         }
     }
@@ -337,10 +364,16 @@ class MainActivity : Activity() {
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(if (highlighted) white else purple)
+
             background = roundedBackground(
-                if (highlighted) Color.rgb(105, 66, 190) else cardColor,
+                if (highlighted) {
+                    Color.rgb(105, 66, 190)
+                } else {
+                    cardColor
+                },
                 14
             )
+
             setPadding(dp(12), dp(8), dp(12), dp(8))
             stateListAnimator = null
             setOnClickListener { action() }
@@ -381,20 +414,29 @@ class MainActivity : Activity() {
             .toIntOrNull()?.coerceIn(1, 100) ?: 10
 
         val letters = alphabetCount.text.toString()
-            .toIntOrNull()?.coerceIn(1, 100) ?: 26
+            .toIntOrNull()?.coerceIn(1, 3) ?: 1
 
         val delayMs = delay.text.toString()
-            .toIntOrNull()?.coerceIn(0, 60000) ?: 100
+            .toIntOrNull()?.coerceIn(0, 60000) ?: 0
+
+        val alphabetText = alphabetSequence.text.toString()
+            .ifBlank { "ABCDEFGHIJKLMNOPQRSTUVWXYZ" }
+
+        val numberText = numberSequence.text.toString()
+            .ifBlank { "1234567890" }
 
         prefs.edit()
             .putBoolean("enterSend", enterSend.isChecked)
             .putBoolean("autoDrop", autoDrop.isChecked)
             .putBoolean("speedBased", speedBased.isChecked)
-            .putInt("keyboardSize", keyboardSize.selectedItemPosition)
+            .putInt(
+                "keyboardSize",
+                keyboardSize.selectedItemPosition.coerceIn(0, 2)
+            )
             .putInt("digitCount", digits)
             .putInt("alphabetCount", letters)
-            .putString("numberSequence", numberSequence.text.toString())
-            .putString("alphabetSequence", alphabetSequence.text.toString())
+            .putString("numberSequence", numberText)
+            .putString("alphabetSequence", alphabetText)
             .putInt("delay", delayMs)
             .apply()
 
