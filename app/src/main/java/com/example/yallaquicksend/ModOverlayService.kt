@@ -54,7 +54,8 @@ class ModOverlayService : Service() {
         flags: Int,
         startId: Int
     ): Int {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             !Settings.canDrawOverlays(this)
         ) {
             toast("Pehle Display over other apps permission allow karo")
@@ -100,7 +101,6 @@ class ModOverlayService : Service() {
         }
     }
 
-    // Circular Ximena DP
     private fun createLogo(sizeDp: Int): ImageView {
         val outline = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
@@ -249,11 +249,7 @@ class ModOverlayService : Service() {
         )
 
         content.addView(
-            panelButton(
-                "◎   SET SEND POSITION",
-                14f,
-                true
-            ) {
+            panelButton("◎   SET SEND POSITION", 14f, true) {
                 startPositionSelection()
             },
             blockParams(dp(4))
@@ -270,6 +266,7 @@ class ModOverlayService : Service() {
             )
         )
 
+        // Alphabet Count
         val alphabetCount = prefs.getInt(
             "alphabetCount",
             1
@@ -301,6 +298,74 @@ class ModOverlayService : Service() {
 
         content.addView(countRow)
 
+        // Keyboard Resize
+        val keyboardSize = prefs.getInt(
+            "keyboardSize",
+            100
+        ).coerceIn(50, 200)
+
+        content.addView(
+            panelLabel("⌨   Keyboard Size: $keyboardSize%")
+        )
+
+        val resizeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        resizeRow.addView(
+            panelButton("− 10%", 13f) {
+                val current = prefs.getInt(
+                    "keyboardSize",
+                    100
+                ).coerceIn(50, 200)
+
+                val next = (current - 10).coerceAtLeast(50)
+
+                prefs.edit()
+                    .putInt("keyboardSize", next)
+                    .apply()
+
+                renderPanel()
+                toast("Keyboard size: $next%")
+            },
+            equalParams()
+        )
+
+        resizeRow.addView(
+            panelButton("RESET 100%", 11f) {
+                prefs.edit()
+                    .putInt("keyboardSize", 100)
+                    .apply()
+
+                renderPanel()
+                toast("Keyboard size 100%")
+            },
+            equalParams()
+        )
+
+        resizeRow.addView(
+            panelButton("+ 10%", 13f) {
+                val current = prefs.getInt(
+                    "keyboardSize",
+                    100
+                ).coerceIn(50, 200)
+
+                val next = (current + 10).coerceAtMost(200)
+
+                prefs.edit()
+                    .putInt("keyboardSize", next)
+                    .apply()
+
+                renderPanel()
+                toast("Keyboard size: $next%")
+            },
+            equalParams()
+        )
+
+        content.addView(resizeRow)
+
+        // Speed Based
         val speed = prefs.getBoolean("speedBased", true)
 
         content.addView(
@@ -317,10 +382,13 @@ class ModOverlayService : Service() {
             blockParams(dp(6))
         )
 
+        // Auto Drop Delay
         val delay = prefs.getInt("delay", 0)
             .coerceIn(0, 60000)
 
-        content.addView(panelLabel("◷   Auto Drop Delay: $delay ms"))
+        content.addView(
+            panelLabel("◷   Auto Drop Delay: $delay ms")
+        )
 
         val delayRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -352,6 +420,7 @@ class ModOverlayService : Service() {
 
         content.addView(delayRow)
 
+        // Auto Drop
         val auto = prefs.getBoolean("autoDrop", false)
 
         content.addView(
