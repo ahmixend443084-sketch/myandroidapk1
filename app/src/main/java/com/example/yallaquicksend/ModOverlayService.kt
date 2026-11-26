@@ -39,7 +39,7 @@ class ModOverlayService : Service() {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
-    private val background = Color.rgb(12, 10, 23)
+    private val backgroundColor = Color.rgb(12, 10, 23)
     private val card = Color.rgb(29, 23, 48)
     private val purple = Color.rgb(130, 45, 245)
     private val lightPurple = Color.rgb(205, 170, 255)
@@ -54,7 +54,9 @@ class ModOverlayService : Service() {
         flags: Int,
         startId: Int
     ): Int {
-        if (!Settings.canDrawOverlays(this)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            !Settings.canDrawOverlays(this)
+        ) {
             toast("Pehle Display over other apps permission allow karo")
             stopSelf()
             return START_NOT_STICKY
@@ -125,7 +127,7 @@ class ModOverlayService : Service() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(8), dp(10), dp(10))
-            background = rounded(background, 20)
+            background = rounded(backgroundColor, 20)
             elevation = dp(12).toFloat()
         }
 
@@ -134,7 +136,6 @@ class ModOverlayService : Service() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        // DP added to panel header
         header.addView(
             createLogo(44),
             LinearLayout.LayoutParams(dp(44), dp(44)).apply {
@@ -247,31 +248,36 @@ class ModOverlayService : Service() {
             false
         )
 
-        content.addView(panelButton(
-            "◎   SET SEND POSITION",
-            14f,
-            true
-        ) {
-            startPositionSelection()
-        }, blockParams(dp(4)))
-
-        content.addView(panelLabel(
-            if (positionSaved) {
-                "● Send position saved"
-            } else {
-                "○ Send position not set"
+        content.addView(
+            panelButton(
+                "◎   SET SEND POSITION",
+                14f,
+                true
+            ) {
+                startPositionSelection()
             },
-            if (positionSaved) green else muted
-        ))
+            blockParams(dp(4))
+        )
+
+        content.addView(
+            panelLabel(
+                if (positionSaved) {
+                    "● Send position saved"
+                } else {
+                    "○ Send position not set"
+                },
+                if (positionSaved) green else muted
+            )
+        )
 
         val alphabetCount = prefs.getInt(
             "alphabetCount",
             1
         ).coerceIn(1, 3)
 
-        content.addView(panelLabel(
-            "Aa   Alphabet Count: $alphabetCount"
-        ))
+        content.addView(
+            panelLabel("Aa   Alphabet Count: $alphabetCount")
+        )
 
         val countRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -297,16 +303,19 @@ class ModOverlayService : Service() {
 
         val speed = prefs.getBoolean("speedBased", true)
 
-        content.addView(panelButton(
-            "⚡   SPEED BASED: ${if (speed) "ON" else "OFF"}",
-            13f,
-            speed
-        ) {
-            prefs.edit()
-                .putBoolean("speedBased", !speed)
-                .apply()
-            renderPanel()
-        }, blockParams(dp(6)))
+        content.addView(
+            panelButton(
+                "⚡   SPEED BASED: ${if (speed) "ON" else "OFF"}",
+                13f,
+                speed
+            ) {
+                prefs.edit()
+                    .putBoolean("speedBased", !speed)
+                    .apply()
+                renderPanel()
+            },
+            blockParams(dp(6))
+        )
 
         val delay = prefs.getInt("delay", 0)
             .coerceIn(0, 60000)
@@ -345,28 +354,30 @@ class ModOverlayService : Service() {
 
         val auto = prefs.getBoolean("autoDrop", false)
 
-        content.addView(panelButton(
-            "⚡   AUTO DROP: ${if (auto) "ON" else "OFF"}",
-            13f,
-            auto
-        ) {
-            setAutoDrop(!prefs.getBoolean("autoDrop", false))
-        }, blockParams(dp(6)))
+        content.addView(
+            panelButton(
+                "⚡   AUTO DROP: ${if (auto) "ON" else "OFF"}",
+                13f,
+                auto
+            ) {
+                setAutoDrop(!prefs.getBoolean("autoDrop", false))
+            },
+            blockParams(dp(6))
+        )
 
-        content.addView(panelButton(
-            "■   STOP AUTO DROP",
-            13f
-        ) {
-            stopAutoDrop()
-        }, blockParams(dp(5)))
+        content.addView(
+            panelButton("■   STOP AUTO DROP", 13f) {
+                stopAutoDrop()
+            },
+            blockParams(dp(5))
+        )
 
-        content.addView(panelButton(
-            "◉   HIDE PANEL",
-            13f,
-            true
-        ) {
-            hidePanel()
-        }, blockParams(dp(5)))
+        content.addView(
+            panelButton("◉   HIDE PANEL", 13f, true) {
+                hidePanel()
+            },
+            blockParams(dp(5))
+        )
     }
 
     private fun addSettings(content: LinearLayout) {
@@ -378,10 +389,9 @@ class ModOverlayService : Service() {
             }
         )
 
-        content.addView(panelLabel(
-            "⚙   FLASH SETTINGS",
-            lightPurple
-        ))
+        content.addView(
+            panelLabel("⚙   FLASH SETTINGS", lightPurple)
+        )
 
         addToggle(
             content,
@@ -404,14 +414,13 @@ class ModOverlayService : Service() {
             false
         )
 
-        content.addView(panelButton(
-            "BACK TO PANEL",
-            13f,
-            true
-        ) {
-            settingsVisible = false
-            renderPanel()
-        }, blockParams(dp(8)))
+        content.addView(
+            panelButton("BACK TO PANEL", 13f, true) {
+                settingsVisible = false
+                renderPanel()
+            },
+            blockParams(dp(8))
+        )
     }
 
     private fun addToggle(
@@ -432,20 +441,22 @@ class ModOverlayService : Service() {
 
         val enabled = prefs.getBoolean(key, defaultValue)
 
-        row.addView(panelButton(
-            if (enabled) "ON" else "OFF",
-            12f,
-            enabled
-        ) {
-            val next = !prefs.getBoolean(key, defaultValue)
+        row.addView(
+            panelButton(
+                if (enabled) "ON" else "OFF",
+                12f,
+                enabled
+            ) {
+                val next = !prefs.getBoolean(key, defaultValue)
 
-            if (key == "autoDrop") {
-                setAutoDrop(next)
-            } else {
-                prefs.edit().putBoolean(key, next).apply()
-                renderPanel()
+                if (key == "autoDrop") {
+                    setAutoDrop(next)
+                } else {
+                    prefs.edit().putBoolean(key, next).apply()
+                    renderPanel()
+                }
             }
-        })
+        )
 
         content.addView(row)
     }
