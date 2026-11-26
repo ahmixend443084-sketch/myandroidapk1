@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -15,6 +16,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -96,6 +98,24 @@ class ModOverlayService : Service() {
         }
     }
 
+    // Circular Ximena DP
+    private fun createLogo(sizeDp: Int): ImageView {
+        val outline = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(card)
+            setStroke(dp(2), purple)
+        }
+
+        return ImageView(this).apply {
+            setImageResource(R.drawable.ximena_icon)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = outline
+            clipToOutline = true
+            contentDescription = "Ximena moon logo"
+            elevation = dp(5).toFloat()
+        }
+    }
+
     private fun showMainPanel() {
         removePanelOnly()
         removeTabOnly()
@@ -114,13 +134,22 @@ class ModOverlayService : Service() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
+        // DP added to panel header
+        header.addView(
+            createLogo(44),
+            LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                rightMargin = dp(9)
+            }
+        )
+
         val brand = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         brand.addView(TextView(this).apply {
-            text = "🌙 FLASH"
-            textSize = 21f
+            text = "FLASH 🌙"
+            textSize = 20f
             typeface = Typeface.create(
                 "sans-serif-black",
                 Typeface.BOLD
@@ -129,9 +158,9 @@ class ModOverlayService : Service() {
         })
 
         brand.addView(TextView(this).apply {
-            text = "QUICK SEND TOOLS"
+            text = "XIMENA • QUICK SEND"
             textSize = 9f
-            letterSpacing = 0.14f
+            letterSpacing = 0.08f
             setTextColor(muted)
         })
 
@@ -179,7 +208,7 @@ class ModOverlayService : Service() {
         panelView = root
 
         val params = newWindowParams(
-            dp(270),
+            dp(290),
             WindowManager.LayoutParams.WRAP_CONTENT
         ).apply {
             x = dp(8)
@@ -213,7 +242,6 @@ class ModOverlayService : Service() {
             return
         }
 
-        // Send position
         val positionSaved = prefs.getBoolean(
             "sendPositionSaved",
             false
@@ -236,7 +264,6 @@ class ModOverlayService : Service() {
             if (positionSaved) green else muted
         ))
 
-        // Keyboard configuration display
         val alphabetCount = prefs.getInt(
             "alphabetCount",
             1
@@ -268,7 +295,6 @@ class ModOverlayService : Service() {
 
         content.addView(countRow)
 
-        // Speed toggle
         val speed = prefs.getBoolean("speedBased", true)
 
         content.addView(panelButton(
@@ -282,7 +308,6 @@ class ModOverlayService : Service() {
             renderPanel()
         }, blockParams(dp(6)))
 
-        // Delay controls
         val delay = prefs.getInt("delay", 0)
             .coerceIn(0, 60000)
 
@@ -318,7 +343,6 @@ class ModOverlayService : Service() {
 
         content.addView(delayRow)
 
-        // Auto Drop toggle
         val auto = prefs.getBoolean("autoDrop", false)
 
         content.addView(panelButton(
@@ -329,7 +353,6 @@ class ModOverlayService : Service() {
             setAutoDrop(!prefs.getBoolean("autoDrop", false))
         }, blockParams(dp(6)))
 
-        // Stop auto drop
         content.addView(panelButton(
             "■   STOP AUTO DROP",
             13f
@@ -337,7 +360,6 @@ class ModOverlayService : Service() {
             stopAutoDrop()
         }, blockParams(dp(5)))
 
-        // Hide panel, keep edge tab
         content.addView(panelButton(
             "◉   HIDE PANEL",
             13f,
@@ -348,6 +370,14 @@ class ModOverlayService : Service() {
     }
 
     private fun addSettings(content: LinearLayout) {
+        content.addView(
+            createLogo(54),
+            LinearLayout.LayoutParams(dp(54), dp(54)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(8)
+            }
+        )
+
         content.addView(panelLabel(
             "⚙   FLASH SETTINGS",
             lightPurple
@@ -423,7 +453,6 @@ class ModOverlayService : Service() {
     private fun setAutoDrop(enabled: Boolean) {
         prefs.edit().putBoolean("autoDrop", enabled).apply()
         renderPanel()
-
         toast(if (enabled) "Auto Drop ON" else "Auto Drop OFF")
     }
 
@@ -447,10 +476,7 @@ class ModOverlayService : Service() {
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setTextColor(white)
-            background = rounded(
-                purple,
-                14
-            )
+            background = rounded(purple, 14)
             elevation = dp(8).toFloat()
         }
 
@@ -476,8 +502,13 @@ class ModOverlayService : Service() {
                 MotionEvent.ACTION_DOWN -> true
 
                 MotionEvent.ACTION_MOVE -> {
-                    params.x = (event.rawX - markerWidth / 2f).toInt()
-                    params.y = (event.rawY - markerHeight / 2f).toInt()
+                    params.x = (
+                        event.rawX - markerWidth / 2f
+                    ).toInt()
+
+                    params.y = (
+                        event.rawY - markerHeight / 2f
+                    ).toInt()
 
                     try {
                         windowManager.updateViewLayout(marker, params)
@@ -531,7 +562,7 @@ class ModOverlayService : Service() {
         removeTabOnly()
 
         val tab = TextView(this).apply {
-            text = "🌙 FLASH"
+            text = "🌙 XIMENA"
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
@@ -628,8 +659,8 @@ class ModOverlayService : Service() {
     private fun rounded(
         color: Int,
         radius: Int
-    ): android.graphics.drawable.GradientDrawable {
-        return android.graphics.drawable.GradientDrawable().apply {
+    ): GradientDrawable {
+        return GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(radius).toFloat()
             setStroke(dp(1), Color.rgb(76, 43, 120))
