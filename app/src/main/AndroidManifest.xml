@@ -1,17 +1,18 @@
+
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Floating panel permission -->
     <uses-permission
         android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:allowBackup="false"
         android:label="FLASH🌙"
+        android:icon="@drawable/ximena_icon"
+        android:roundIcon="@drawable/ximena_icon"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- Main App Screen -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -23,7 +24,6 @@
 
         </activity>
 
-        <!-- Accessibility Service -->
         <service
             android:name=".YallaAccessibilityService"
             android:label="FLASH Accessibility"
@@ -31,8 +31,7 @@
             android:exported="true">
 
             <intent-filter>
-                <action
-                    android:name="android.accessibilityservice.AccessibilityService" />
+                <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
 
             <meta-data
@@ -41,7 +40,6 @@
 
         </service>
 
-        <!-- FLASH Keyboard Service -->
         <service
             android:name=".QuickKeyboardService"
             android:label="FLASH🌙 Keyboard"
@@ -58,7 +56,6 @@
 
         </service>
 
-        <!-- Floating Panel Service -->
         <service
             android:name=".ModOverlayService"
             android:exported="false" />
