@@ -8,20 +8,16 @@
     <application
         android:allowBackup="false"
         android:label="FLASH🌙"
-        android:icon="@drawable/ximena_icon"
-        android:roundIcon="@drawable/ximena_icon"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity
             android:name=".MainActivity"
             android:exported="true">
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
         </activity>
 
         <service
@@ -29,15 +25,12 @@
             android:label="FLASH Accessibility"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
-
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
-
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service" />
-
         </service>
 
         <service
@@ -45,15 +38,12 @@
             android:label="FLASH🌙 Keyboard"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:exported="true">
-
             <intent-filter>
                 <action android:name="android.view.InputMethod" />
             </intent-filter>
-
             <meta-data
                 android:name="android.view.im"
                 android:resource="@xml/method" />
-
         </service>
 
         <service
