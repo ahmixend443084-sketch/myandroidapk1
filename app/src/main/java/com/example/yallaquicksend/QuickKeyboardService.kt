@@ -23,6 +23,7 @@ class QuickKeyboardService : InputMethodService() {
     private val handler = Handler(Looper.getMainLooper())
 
     private var numbersMode = false
+    private var uppercaseMode = false
     private var autoDrop = false
     private var speedBased = true
     private var enterSend = true
@@ -52,6 +53,7 @@ class QuickKeyboardService : InputMethodService() {
         keyboardSize = prefs.getInt("keyboardSize", 1).coerceIn(0, 2)
         delayMs = prefs.getInt("delay", 0).coerceIn(0, 1000)
         alphabetCount = prefs.getInt("alphabetCount", 1).coerceIn(1, 3)
+        uppercaseMode = prefs.getBoolean("uppercaseMode", false)
     }
 
     override fun onCreateInputView(): View {
@@ -76,12 +78,14 @@ class QuickKeyboardService : InputMethodService() {
         handler.removeCallbacksAndMessages(null)
         pendingCharacters.clear()
         autoSendInProgress = false
+        stopped = true
         super.onFinishInputView(finishingInput)
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         pendingCharacters.clear()
+        autoSendInProgress = false
         super.onDestroy()
     }
 
@@ -111,8 +115,18 @@ class QuickKeyboardService : InputMethodService() {
         )
 
         header.addView(
-            makeButton("ABC", 12f) {
-                numbersMode = false
+            makeButton(
+                if (uppercaseMode) "abc" else "ABC",
+                12f
+            ) {
+                if (numbersMode) {
+                    numbersMode = false
+                } else {
+                    uppercaseMode = !uppercaseMode
+                    prefs.edit()
+                        .putBoolean("uppercaseMode", uppercaseMode)
+                        .apply()
+                }
                 renderKeys()
             },
             smallButtonParams()
@@ -147,9 +161,17 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun renderAlphabetKeys() {
-        addKeyRow(listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"))
-        addKeyRow(listOf("A", "S", "D", "F", "G", "H", "J", "K", "L"))
-        addKeyRow(listOf("Z", "X", "C", "V", "B", "N", "M"))
+        addKeyRow(
+            listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
+        )
+
+        addKeyRow(
+            listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
+        )
+
+        addKeyRow(
+            listOf("z", "x", "c", "v", "b", "n", "m")
+        )
 
         val bottom = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -276,7 +298,10 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         bottom.addView(
-            makeButton("ABC", 12f) {
+            makeButton(
+                if (uppercaseMode) "abc" else "ABC",
+                12f
+            ) {
                 numbersMode = false
                 renderKeys()
             },
@@ -300,9 +325,15 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         keys.forEach { key ->
+            val displayKey = if (uppercaseMode) {
+                key.uppercase()
+            } else {
+                key.lowercase()
+            }
+
             row.addView(
-                makeButton(key, keyTextSize()) {
-                    typeText(key.lowercase())
+                makeButton(displayKey, keyTextSize()) {
+                    typeText(displayKey)
                 },
                 LinearLayout.LayoutParams(
                     0,
@@ -355,7 +386,7 @@ class QuickKeyboardService : InputMethodService() {
             }
 
             setOnClickListener {
-                action()
+                if (!stopped) action()
             }
         }
     }
@@ -380,41 +411,41 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     // Auto Drop OFF: normal typing.
-    // Auto Drop ON: selected count ke characters ka group ek baar send hoga.
+    // Auto Drop ON: count ke mutabiq characters ka group send hota hai.
     private fun typeText(value: String) {
         loadSettings()
 
+        if (stopped) return
+
         val connection = currentInputConnection ?: return
 
-        if (!autoDrop || stopped) {
+        if (!autoDrop) {
             connection.commitText(value, 1)
             return
         }
 
-        // Auto Drop mode mein spaces ko automatic message na banayein.
-        if (value.isBlank()) {
-            return
-        }
+        // Auto Drop mein spaces ko automatic message na banayein.
+        if (value.isBlank()) return
 
         pendingCharacters.addLast(value)
         processNextAutoSend()
     }
 
     private fun processNextAutoSend() {
-        if (autoSendInProgress || pendingCharacters.isEmpty()) return
+        if (stopped || autoSendInProgress || pendingCharacters.isEmpty()) {
+            return
+        }
 
         loadSettings()
 
-        if (!autoDrop || stopped) {
+        if (!autoDrop) {
             pendingCharacters.clear()
             return
         }
 
-        // Count ke mutabiq poora group aane ka intezar.
         if (pendingCharacters.size < alphabetCount) return
 
         val connection = currentInputConnection ?: return
-
         val group = StringBuilder()
 
         repeat(alphabetCount) {
@@ -427,26 +458,27 @@ class QuickKeyboardService : InputMethodService() {
 
         autoSendInProgress = true
 
-        // Group ko input field mein ek hi baar likho.
         connection.commitText(group.toString(), 1)
 
-        // Delay 0 ms bhi allowed hai.
-        val actualDelay = if (speedBased) delayMs else 300
+        // Manual delay setting 0 se 1000 ms tak apply hogi.
+        // 0 ms par unnecessary 300 ms wait nahi hoga.
+        val actualDelay = delayMs.coerceIn(0, 1000)
 
         handler.postDelayed({
-            if (autoDrop && !stopped) {
-                sendAutomaticAction()
+            try {
+                if (!stopped && autoDrop) {
+                    sendAutomaticAction()
+                }
+            } finally {
+                autoSendInProgress = false
+                processNextAutoSend()
             }
-
-            autoSendInProgress = false
-
-            // Agar agla group queue mein hai to use process karo.
-            processNextAutoSend()
-
         }, actualDelay.toLong())
     }
 
     private fun deleteCharacter() {
+        if (stopped) return
+
         val connection = currentInputConnection ?: return
 
         val deleted = connection.deleteSurroundingText(1, 0)
@@ -462,6 +494,8 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun handleEnter() {
+        if (stopped) return
+
         loadSettings()
 
         if (enterSend) {
