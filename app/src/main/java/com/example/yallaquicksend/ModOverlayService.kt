@@ -7,7 +7,6 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -52,27 +51,26 @@ class ModOverlayService : Service() {
             val service = YallaAccessibilityService.instance
 
             if (service == null) {
-                toast("Pehle FLASH Accessibility enable karo")
-            } else {
-                val saved = prefs.getBoolean("sendPositionSaved", false)
-
-                val success = if (saved) {
-                    service.tapSavedSendPosition()
-                } else {
-                    service.clickVisibleSend()
-                }
-
-                if (!success) {
-                    toast("Send action nahi ho saka. Position aur Accessibility check karo.")
-                }
+                prefs.edit().putBoolean("autoDrop", false).apply()
+                stopped = true
+                renderPanel()
+                toast("Accessibility service band hai. Auto Drop rok diya.")
+                return
             }
 
-            // Speed Based OFF par bhi uncontrolled zero-delay loop nahi chalega.
+            val saved = service.hasSavedSendPosition()
+
+            if (saved) {
+                service.tapSavedSendPosition()
+            } else {
+                service.clickVisibleSend()
+            }
+
             val speedBased = prefs.getBoolean("speedBased", true)
             val delay = if (speedBased) {
                 prefs.getInt("delay", 100).coerceIn(100, 1000)
             } else {
-                100
+                300
             }
 
             if (!stopped && prefs.getBoolean("autoDrop", false)) {
@@ -99,6 +97,10 @@ class ModOverlayService : Service() {
 
         if (panelView == null && tabView == null) {
             showMainPanel()
+        }
+
+        if (prefs.getBoolean("autoDrop", false)) {
+            startAutoDrop()
         }
 
         return START_NOT_STICKY
@@ -288,26 +290,9 @@ class ModOverlayService : Service() {
     private fun addSettings(content: LinearLayout) {
         content.addView(panelLabel("FLASH SETTINGS"))
 
-        addToggle(
-            content,
-            "Enter key sends message",
-            "enterSend",
-            true
-        )
-
-        addToggle(
-            content,
-            "Speed Based",
-            "speedBased",
-            true
-        )
-
-        addToggle(
-            content,
-            "Auto Drop",
-            "autoDrop",
-            false
-        )
+        addToggle(content, "Enter key sends message", "enterSend", true)
+        addToggle(content, "Speed Based", "speedBased", true)
+        addToggle(content, "Auto Drop", "autoDrop", false)
 
         content.addView(panelButton("BACK TO PANEL", 12f) {
             settingsVisible = false
@@ -350,14 +335,20 @@ class ModOverlayService : Service() {
     private fun setAutoDrop(enabled: Boolean) {
         prefs.edit().putBoolean("autoDrop", enabled).apply()
 
-        handler.removeCallbacks(autoTask)
-        stopped = !enabled
-
         if (enabled) {
-            handler.post(autoTask)
+            startAutoDrop()
+        } else {
+            stopped = true
+            handler.removeCallbacks(autoTask)
         }
 
         renderPanel()
+    }
+
+    private fun startAutoDrop() {
+        handler.removeCallbacks(autoTask)
+        stopped = false
+        handler.post(autoTask)
     }
 
     private fun stopAutoDrop() {
@@ -419,8 +410,8 @@ class ModOverlayService : Service() {
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    val x = params.x + dp(41)
-                    val y = params.y + dp(29)
+                    val x = (params.x + dp(41)).coerceAtLeast(0)
+                    val y = (params.y + dp(29)).coerceAtLeast(0)
 
                     prefs.edit()
                         .putInt("sendPositionX", x)
@@ -493,14 +484,6 @@ class ModOverlayService : Service() {
         }
     }
 
-    private fun insertText(value: String) {
-        val service = YallaAccessibilityService.instance
-
-        if (service == null || !service.insertText(value)) {
-            toast("Pehle Yalla message field select karo")
-        }
-    }
-
     private fun panelLabel(value: String) = TextView(this).apply {
         text = value
         textSize = 12f
@@ -545,7 +528,7 @@ class ModOverlayService : Service() {
     private fun roundedBackground(
         color: Int,
         radius: Float
-    ) = GradientDrawable().apply {
+    ) = android.graphics.drawable.GradientDrawable().apply {
         setColor(color)
         cornerRadius = radius
     }
