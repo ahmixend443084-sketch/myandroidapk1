@@ -68,13 +68,8 @@ class MainActivity : Activity() {
             setBackgroundColor(bg)
         }
 
-        scroll.addView(
-            root,
-            ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.WRAP_CONTENT
-            )
-        )
+        // FIX: ScrollView.LayoutParams ki jagah direct addView
+        scroll.addView(root)
 
         setContentView(scroll)
 
