@@ -16,6 +16,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import java.util.ArrayDeque
 
 class QuickKeyboardService : InputMethodService() {
 
@@ -31,28 +32,11 @@ class QuickKeyboardService : InputMethodService() {
 
     private lateinit var keyboardRoot: LinearLayout
 
+    private val pendingCharacters = ArrayDeque<String>()
+    private var autoSendInProgress = false
+
     private val prefs by lazy {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
-    }
-
-    private val autoSendTask = object : Runnable {
-        override fun run() {
-            loadSettings()
-
-            if (autoDrop && !stopped) {
-                sendAutomaticAction()
-
-                val nextDelay = if (speedBased) {
-                    delayMs.coerceIn(100, 1000)
-                } else {
-                    100
-                }
-
-                if (autoDrop && !stopped) {
-                    handler.postDelayed(this, nextDelay.toLong())
-                }
-            }
-        }
     }
 
     override fun onCreate() {
@@ -80,7 +64,6 @@ class QuickKeyboardService : InputMethodService() {
         super.onStartInputView(info, restarting)
         loadSettings()
         stopped = false
-        handler.removeCallbacks(autoSendTask)
 
         if (::keyboardRoot.isInitialized) {
             renderKeys()
@@ -88,12 +71,15 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        handler.removeCallbacks(autoSendTask)
+        handler.removeCallbacksAndMessages(null)
+        pendingCharacters.clear()
+        autoSendInProgress = false
         super.onFinishInputView(finishingInput)
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        pendingCharacters.clear()
         super.onDestroy()
     }
 
@@ -159,7 +145,6 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun renderAlphabetKeys() {
-        // Har letter row 61dp ki: 3 rows = 183dp.
         addKeyRow(listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"))
         addKeyRow(listOf("A", "S", "D", "F", "G", "H", "J", "K", "L"))
         addKeyRow(listOf("Z", "X", "C", "V", "B", "N", "M"))
@@ -190,7 +175,6 @@ class QuickKeyboardService : InputMethodService() {
             keyParams(1.5f)
         )
 
-        // Bottom row 42dp: total alphabet area = 225dp.
         keyboardRoot.addView(
             bottom,
             LinearLayout.LayoutParams(
@@ -328,8 +312,6 @@ class QuickKeyboardService : InputMethodService() {
             )
         }
 
-        // Number pad ke 4 rows (184dp) ke muqable
-        // alphabet ki 3 rows ko 61dp diya gaya hai.
         keyboardRoot.addView(
             row,
             LinearLayout.LayoutParams(
@@ -395,9 +377,57 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
+    // Auto Drop ON: har typed character ko alag send queue mein rakho.
+    // Auto Drop OFF: normal keyboard typing.
     private fun typeText(value: String) {
+        loadSettings()
+
         val connection = currentInputConnection ?: return
-        connection.commitText(value, 1)
+
+        if (!autoDrop) {
+            connection.commitText(value, 1)
+            return
+        }
+
+        // Auto mode mein space ko alag message bana kar send nahi karna.
+        if (value.isBlank()) return
+
+        pendingCharacters.addLast(value)
+        processNextAutoSend()
+    }
+
+    private fun processNextAutoSend() {
+        if (autoSendInProgress || pendingCharacters.isEmpty()) return
+
+        loadSettings()
+
+        if (!autoDrop || stopped) {
+            pendingCharacters.clear()
+            return
+        }
+
+        val connection = currentInputConnection ?: return
+        val character = pendingCharacters.removeFirst()
+
+        autoSendInProgress = true
+
+        // Pehle sirf ek character input field mein likho.
+        connection.commitText(character, 1)
+
+        // Input field ko update hone ka waqt do.
+        handler.postDelayed({
+            if (autoDrop && !stopped) {
+                sendAutomaticAction()
+            }
+
+            // Agla character tab process hoga jab pichla send action
+            // trigger ho chuka ho.
+            handler.postDelayed({
+                autoSendInProgress = false
+                processNextAutoSend()
+            }, 250L)
+
+        }, 150L)
     }
 
     private fun deleteCharacter() {
