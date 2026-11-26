@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
+import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.CheckBox
@@ -68,17 +69,18 @@ class MainActivity : Activity() {
             setBackgroundColor(bg)
         }
 
+        // FIX: Use ViewGroup.LayoutParams
         scroll.addView(
             root,
-            ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
 
         setContentView(scroll)
 
-        // XIMENA BRAND HEADER
+        // LOGO HEADER
         val logoFrame = LinearLayout(this).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, dp(8))
@@ -396,13 +398,11 @@ class MainActivity : Activity() {
         toast("Settings save ho gayi")
     }
 
-    // OVERLAY SERVICE
-    // Foreground notification ke baghair startForegroundService
-    // timeout crash ka sabab ban sakta hai.
     private fun startOverlay() {
         try {
-            val intent = Intent(this, ModOverlayService::class.java)
-            startService(intent)
+            startService(
+                Intent(this, ModOverlayService::class.java)
+            )
         } catch (e: Exception) {
             toast("Floating panel start nahi hua: ${e.message}")
         }
