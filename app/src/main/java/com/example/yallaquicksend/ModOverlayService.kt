@@ -7,12 +7,12 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
@@ -37,6 +37,14 @@ class ModOverlayService : Service() {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
+    private val background = Color.rgb(12, 10, 23)
+    private val card = Color.rgb(29, 23, 48)
+    private val purple = Color.rgb(130, 45, 245)
+    private val lightPurple = Color.rgb(205, 170, 255)
+    private val white = Color.WHITE
+    private val muted = Color.rgb(178, 167, 202)
+    private val green = Color.rgb(75, 225, 145)
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(
@@ -45,13 +53,16 @@ class ModOverlayService : Service() {
         startId: Int
     ): Int {
         if (!Settings.canDrawOverlays(this)) {
-            toast("FLASH ko Display over other apps permission do")
+            toast("Pehle Display over other apps permission allow karo")
             stopSelf()
             return START_NOT_STICKY
         }
 
-        windowManager =
-            getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        windowManager = getSystemService(
+            Context.WINDOW_SERVICE
+        ) as WindowManager
+
+        prefs.edit().putBoolean("panelEnabled", true).apply()
 
         if (panelView == null && tabView == null) {
             showMainPanel()
@@ -88,15 +99,14 @@ class ModOverlayService : Service() {
     private fun showMainPanel() {
         removePanelOnly()
         removeTabOnly()
+
         settingsVisible = false
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(8))
-            background = roundedBackground(
-                Color.rgb(25, 23, 37),
-                dp(16).toFloat()
-            )
+            setPadding(dp(10), dp(8), dp(10), dp(10))
+            background = rounded(background, 20)
+            elevation = dp(12).toFloat()
         }
 
         val header = LinearLayout(this).apply {
@@ -104,31 +114,62 @@ class ModOverlayService : Service() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
+        val brand = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        brand.addView(TextView(this).apply {
+            text = "🌙 FLASH"
+            textSize = 21f
+            typeface = Typeface.create(
+                "sans-serif-black",
+                Typeface.BOLD
+            )
+            setTextColor(lightPurple)
+        })
+
+        brand.addView(TextView(this).apply {
+            text = "QUICK SEND TOOLS"
+            textSize = 9f
+            letterSpacing = 0.14f
+            setTextColor(muted)
+        })
+
         header.addView(
-            TextView(this).apply {
-                text = "𝙁𝙇𝘼𝙎𝙃🌙"
-                textSize = 18f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.rgb(194, 166, 255))
-                gravity = Gravity.CENTER_VERTICAL
-            },
-            LinearLayout.LayoutParams(0, dp(40), 1f)
+            brand,
+            LinearLayout.LayoutParams(0, dp(48), 1f)
         )
 
-        header.addView(panelButton("⚙", 14f) {
+        header.addView(panelButton("⚙", 17f) {
             settingsVisible = !settingsVisible
             renderPanel()
         })
 
-        header.addView(panelButton("—", 16f) {
+        header.addView(panelButton("—", 17f) {
             hidePanel()
         })
 
-        header.addView(panelButton("✕", 14f) {
+        header.addView(panelButton("×", 19f) {
+            prefs.edit().putBoolean("panelEnabled", false).apply()
             stopSelf()
         })
 
         root.addView(header)
+
+        val divider = View(this).apply {
+            setBackgroundColor(Color.rgb(95, 42, 155))
+        }
+
+        root.addView(
+            divider,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(2)
+            ).apply {
+                topMargin = dp(8)
+                bottomMargin = dp(8)
+            }
+        )
 
         root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -138,7 +179,7 @@ class ModOverlayService : Service() {
         panelView = root
 
         val params = newWindowParams(
-            dp(235),
+            dp(270),
             WindowManager.LayoutParams.WRAP_CONTENT
         ).apply {
             x = dp(8)
@@ -153,15 +194,17 @@ class ModOverlayService : Service() {
         } catch (_: Exception) {
             panelView = null
             panelParams = null
-            toast("FLASH panel start nahi hua")
+            toast("Panel open nahi hua. Overlay permission check karo.")
             stopSelf()
         }
     }
 
     private fun renderPanel() {
         val root = panelView ?: return
-        val content =
-            root.findViewWithTag<LinearLayout>("panel_content") ?: return
+
+        val content = root.findViewWithTag<LinearLayout>(
+            "panel_content"
+        ) ?: return
 
         content.removeAllViews()
 
@@ -170,45 +213,38 @@ class ModOverlayService : Service() {
             return
         }
 
-        content.addView(
-            panelButton("SET SEND POSITION", 12f, true) {
-                startPositionSelection()
-            }
+        // Send position
+        val positionSaved = prefs.getBoolean(
+            "sendPositionSaved",
+            false
         )
 
-        content.addView(
-            panelLabel(
-                if (prefs.getBoolean("sendPositionSaved", false)) {
-                    "Send position: SAVED"
-                } else {
-                    "Send position: NOT SET"
-                }
-            )
-        )
+        content.addView(panelButton(
+            "◎   SET SEND POSITION",
+            14f,
+            true
+        ) {
+            startPositionSelection()
+        }, blockParams(dp(4)))
 
-        // Keyboard size setting
-        val keyboardSize = prefs.getInt("keyboardSize", 1).coerceIn(0, 2)
-        content.addView(panelLabel("Keyboard Size"))
+        content.addView(panelLabel(
+            if (positionSaved) {
+                "● Send position saved"
+            } else {
+                "○ Send position not set"
+            },
+            if (positionSaved) green else muted
+        ))
 
-        val sizeRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+        // Keyboard configuration display
+        val alphabetCount = prefs.getInt(
+            "alphabetCount",
+            1
+        ).coerceIn(1, 3)
 
-        listOf("SMALL", "MEDIUM", "LARGE").forEachIndexed { index, label ->
-            sizeRow.addView(
-                panelButton(label, 10f, keyboardSize == index) {
-                    prefs.edit().putInt("keyboardSize", index).apply()
-                    renderPanel()
-                    toast("Keyboard size saved")
-                },
-                equalParams()
-            )
-        }
-
-        content.addView(sizeRow)
-
-        val alphabetCount = prefs.getInt("alphabetCount", 1).coerceIn(1, 3)
-        content.addView(panelLabel("Alphabet Count: $alphabetCount"))
+        content.addView(panelLabel(
+            "Aa   Alphabet Count: $alphabetCount"
+        ))
 
         val countRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -216,8 +252,14 @@ class ModOverlayService : Service() {
 
         for (count in 1..3) {
             countRow.addView(
-                panelButton(count.toString(), 13f, alphabetCount == count) {
-                    prefs.edit().putInt("alphabetCount", count).apply()
+                panelButton(
+                    count.toString(),
+                    14f,
+                    alphabetCount == count
+                ) {
+                    prefs.edit()
+                        .putInt("alphabetCount", count)
+                        .apply()
                     renderPanel()
                 },
                 equalParams()
@@ -226,31 +268,36 @@ class ModOverlayService : Service() {
 
         content.addView(countRow)
 
-        content.addView(
-            panelButton(
-                if (prefs.getBoolean("speedBased", true)) {
-                    "SPEED BASED: ON"
-                } else {
-                    "SPEED BASED: OFF"
-                },
-                12f
-            ) {
-                val next = !prefs.getBoolean("speedBased", true)
-                prefs.edit().putBoolean("speedBased", next).apply()
-                renderPanel()
-            }
-        )
+        // Speed toggle
+        val speed = prefs.getBoolean("speedBased", true)
 
-        val delay = prefs.getInt("delay", 0).coerceIn(0, 1000)
-        content.addView(panelLabel("Auto Drop Delay: $delay ms"))
+        content.addView(panelButton(
+            "⚡   SPEED BASED: ${if (speed) "ON" else "OFF"}",
+            13f,
+            speed
+        ) {
+            prefs.edit()
+                .putBoolean("speedBased", !speed)
+                .apply()
+            renderPanel()
+        }, blockParams(dp(6)))
+
+        // Delay controls
+        val delay = prefs.getInt("delay", 0)
+            .coerceIn(0, 60000)
+
+        content.addView(panelLabel("◷   Auto Drop Delay: $delay ms"))
 
         val delayRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
 
         delayRow.addView(
-            panelButton("− 100 ms", 11f) {
-                val next = (prefs.getInt("delay", 0) - 100).coerceIn(0, 1000)
+            panelButton("− 100 ms", 12f) {
+                val next = (
+                    prefs.getInt("delay", 0) - 100
+                ).coerceIn(0, 60000)
+
                 prefs.edit().putInt("delay", next).apply()
                 renderPanel()
             },
@@ -258,8 +305,11 @@ class ModOverlayService : Service() {
         )
 
         delayRow.addView(
-            panelButton("+ 100 ms", 11f) {
-                val next = (prefs.getInt("delay", 0) + 100).coerceIn(0, 1000)
+            panelButton("+ 100 ms", 12f) {
+                val next = (
+                    prefs.getInt("delay", 0) + 100
+                ).coerceIn(0, 60000)
+
                 prefs.edit().putInt("delay", next).apply()
                 renderPanel()
             },
@@ -268,38 +318,70 @@ class ModOverlayService : Service() {
 
         content.addView(delayRow)
 
-        content.addView(
-            panelButton(
-                if (prefs.getBoolean("autoDrop", false)) {
-                    "AUTO DROP: ON"
-                } else {
-                    "AUTO DROP: OFF"
-                },
-                12f
-            ) {
-                setAutoDrop(!prefs.getBoolean("autoDrop", false))
-            }
-        )
+        // Auto Drop toggle
+        val auto = prefs.getBoolean("autoDrop", false)
 
-        content.addView(panelButton("STOP AUTO DROP", 12f) {
+        content.addView(panelButton(
+            "⚡   AUTO DROP: ${if (auto) "ON" else "OFF"}",
+            13f,
+            auto
+        ) {
+            setAutoDrop(!prefs.getBoolean("autoDrop", false))
+        }, blockParams(dp(6)))
+
+        // Stop auto drop
+        content.addView(panelButton(
+            "■   STOP AUTO DROP",
+            13f
+        ) {
             stopAutoDrop()
-        })
+        }, blockParams(dp(5)))
 
-        content.addView(panelButton("HIDE PANEL", 12f) {
+        // Hide panel, keep edge tab
+        content.addView(panelButton(
+            "◉   HIDE PANEL",
+            13f,
+            true
+        ) {
             hidePanel()
-        })
+        }, blockParams(dp(5)))
     }
 
     private fun addSettings(content: LinearLayout) {
-        content.addView(panelLabel("FLASH SETTINGS"))
-        addToggle(content, "Enter key sends message", "enterSend", true)
-        addToggle(content, "Speed Based", "speedBased", true)
-        addToggle(content, "Auto Drop", "autoDrop", false)
+        content.addView(panelLabel(
+            "⚙   FLASH SETTINGS",
+            lightPurple
+        ))
 
-        content.addView(panelButton("BACK TO PANEL", 12f) {
+        addToggle(
+            content,
+            "Enter key sends message",
+            "enterSend",
+            true
+        )
+
+        addToggle(
+            content,
+            "Speed Based",
+            "speedBased",
+            true
+        )
+
+        addToggle(
+            content,
+            "Auto Drop",
+            "autoDrop",
+            false
+        )
+
+        content.addView(panelButton(
+            "BACK TO PANEL",
+            13f,
+            true
+        ) {
             settingsVisible = false
             renderPanel()
-        })
+        }, blockParams(dp(8)))
     }
 
     private fun addToggle(
@@ -315,12 +397,16 @@ class ModOverlayService : Service() {
 
         row.addView(
             panelLabel(label),
-            LinearLayout.LayoutParams(0, dp(42), 1f)
+            LinearLayout.LayoutParams(0, dp(44), 1f)
         )
 
         val enabled = prefs.getBoolean(key, defaultValue)
 
-        row.addView(panelButton(if (enabled) "ON" else "OFF", 12f) {
+        row.addView(panelButton(
+            if (enabled) "ON" else "OFF",
+            12f,
+            enabled
+        ) {
             val next = !prefs.getBoolean(key, defaultValue)
 
             if (key == "autoDrop") {
@@ -337,6 +423,7 @@ class ModOverlayService : Service() {
     private fun setAutoDrop(enabled: Boolean) {
         prefs.edit().putBoolean("autoDrop", enabled).apply()
         renderPanel()
+
         toast(if (enabled) "Auto Drop ON" else "Auto Drop OFF")
     }
 
@@ -354,24 +441,21 @@ class ModOverlayService : Service() {
 
         removeMarkerOnly()
 
-        val markerWidth = dp(64)
-        val markerHeight = dp(44)
-        val halfWidth = markerWidth / 2
-        val halfHeight = markerHeight / 2
-
         val marker = TextView(this).apply {
             text = "DRAG\nTO SEND"
-            textSize = 10f
+            textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setPadding(dp(2), dp(2), dp(2), dp(2))
-            background = roundedBackground(
-                Color.rgb(103, 66, 185),
-                dp(9).toFloat()
+            setTextColor(white)
+            background = rounded(
+                purple,
+                14
             )
             elevation = dp(8).toFloat()
         }
+
+        val markerWidth = dp(88)
+        val markerHeight = dp(60)
 
         val params = newWindowParams(
             markerWidth,
@@ -380,7 +464,8 @@ class ModOverlayService : Service() {
         ).apply {
             x = dp(100)
             y = dp(300)
-            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            flags = flags or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         }
 
         markerView = marker
@@ -391,19 +476,25 @@ class ModOverlayService : Service() {
                 MotionEvent.ACTION_DOWN -> true
 
                 MotionEvent.ACTION_MOVE -> {
-                    params.x = (event.rawX - halfWidth).toInt().coerceAtLeast(0)
-                    params.y = (event.rawY - halfHeight).toInt().coerceAtLeast(0)
+                    params.x = (event.rawX - markerWidth / 2f).toInt()
+                    params.y = (event.rawY - markerHeight / 2f).toInt()
 
                     try {
                         windowManager.updateViewLayout(marker, params)
                     } catch (_: Exception) {
                     }
+
                     true
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    val x = (params.x + halfWidth).coerceAtLeast(0)
-                    val y = (params.y + halfHeight).coerceAtLeast(0)
+                    val x = (
+                        params.x + markerWidth / 2
+                    ).coerceAtLeast(0)
+
+                    val y = (
+                        params.y + markerHeight / 2
+                    ).coerceAtLeast(0)
 
                     prefs.edit()
                         .putInt("sendPositionX", x)
@@ -423,7 +514,7 @@ class ModOverlayService : Service() {
 
         try {
             windowManager.addView(marker, params)
-            toast("Chhote marker ko Yalla ke Send button par drag karo")
+            toast("Marker ko Yalla ke Send button par drag karo")
         } catch (_: Exception) {
             markerView = null
             markerParams = null
@@ -440,22 +531,23 @@ class ModOverlayService : Service() {
         removeTabOnly()
 
         val tab = TextView(this).apply {
-            text = "FLASH🌙"
+            text = "🌙 FLASH"
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = roundedBackground(
-                Color.rgb(103, 66, 185),
-                dp(18).toFloat()
-            )
-            setOnClickListener { showMainPanel() }
+            setTextColor(white)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = rounded(purple, 20)
+            elevation = dp(10).toFloat()
+
+            setOnClickListener {
+                showMainPanel()
+            }
         }
 
         val params = newWindowParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
-            dp(46)
+            dp(48)
         ).apply {
             x = dp(4)
             y = dp(180)
@@ -473,12 +565,17 @@ class ModOverlayService : Service() {
         }
     }
 
-    private fun panelLabel(value: String) = TextView(this).apply {
-        text = value
-        textSize = 12f
-        setTextColor(Color.WHITE)
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(5), dp(5), dp(5), dp(5))
+    private fun panelLabel(
+        value: String,
+        textColor: Int = white
+    ): TextView {
+        return TextView(this).apply {
+            text = value
+            textSize = 12f
+            setTextColor(textColor)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(6), dp(7), dp(6), dp(7))
+        }
     }
 
     private fun panelButton(
@@ -486,75 +583,109 @@ class ModOverlayService : Service() {
         size: Float,
         highlighted: Boolean = false,
         action: () -> Unit
-    ) = Button(this).apply {
-        text = label
-        textSize = size
-        isAllCaps = false
-        setTextColor(Color.WHITE)
-        minWidth = 0
-        minimumWidth = 0
-        minHeight = 0
-        minimumHeight = 0
-        setPadding(dp(4), dp(2), dp(4), dp(2))
-
-        background = roundedBackground(
-            if (highlighted) Color.rgb(103, 66, 185)
-            else Color.rgb(69, 53, 105),
-            dp(8).toFloat()
-        )
-
-        setOnClickListener { action() }
+    ): Button {
+        return Button(this).apply {
+            text = label
+            textSize = size
+            isAllCaps = false
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(white)
+            minWidth = 0
+            minimumWidth = 0
+            minHeight = 0
+            minimumHeight = 0
+            setPadding(dp(5), dp(5), dp(5), dp(5))
+            background = rounded(
+                if (highlighted) purple else card,
+                12
+            )
+            stateListAnimator = null
+            setOnClickListener { action() }
+        }
     }
 
-    private fun equalParams() = LinearLayout.LayoutParams(
-        0,
-        dp(40),
-        1f
-    ).apply {
-        setMargins(dp(2), dp(2), dp(2), dp(2))
+    private fun equalParams(): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(
+            0,
+            dp(42),
+            1f
+        ).apply {
+            setMargins(dp(3), dp(3), dp(3), dp(3))
+        }
     }
 
-    private fun roundedBackground(
+    private fun blockParams(
+        topMargin: Int = 0
+    ): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            this.topMargin = topMargin
+        }
+    }
+
+    private fun rounded(
         color: Int,
-        radius: Float
-    ) = GradientDrawable().apply {
-        setColor(color)
-        cornerRadius = radius
+        radius: Int
+    ): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius).toFloat()
+            setStroke(dp(1), Color.rgb(76, 43, 120))
+        }
     }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
 
     private fun toast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            applicationContext,
+            message,
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun removePanelOnly() {
         val view = panelView ?: return
+
         try {
-            if (::windowManager.isInitialized) windowManager.removeView(view)
+            if (::windowManager.isInitialized) {
+                windowManager.removeView(view)
+            }
         } catch (_: Exception) {
         }
+
         panelView = null
         panelParams = null
     }
 
     private fun removeTabOnly() {
         val view = tabView ?: return
+
         try {
-            if (::windowManager.isInitialized) windowManager.removeView(view)
+            if (::windowManager.isInitialized) {
+                windowManager.removeView(view)
+            }
         } catch (_: Exception) {
         }
+
         tabView = null
         tabParams = null
     }
 
     private fun removeMarkerOnly() {
         val view = markerView ?: return
+
         try {
-            if (::windowManager.isInitialized) windowManager.removeView(view)
+            if (::windowManager.isInitialized) {
+                windowManager.removeView(view)
+            }
         } catch (_: Exception) {
         }
+
         markerView = null
         markerParams = null
     }
@@ -563,6 +694,9 @@ class ModOverlayService : Service() {
         removePanelOnly()
         removeTabOnly()
         removeMarkerOnly()
+
+        prefs.edit().putBoolean("panelEnabled", false).apply()
+
         super.onDestroy()
     }
 }
