@@ -8,9 +8,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -34,49 +32,9 @@ class ModOverlayService : Service() {
     private var markerParams: WindowManager.LayoutParams? = null
 
     private var settingsVisible = false
-    private var stopped = true
-
-    private val handler = Handler(Looper.getMainLooper())
 
     private val prefs by lazy {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
-    }
-
-    private val autoTask = object : Runnable {
-        override fun run() {
-            if (stopped || !prefs.getBoolean("autoDrop", false)) {
-                return
-            }
-
-            val service = YallaAccessibilityService.instance
-
-            if (service == null) {
-                prefs.edit().putBoolean("autoDrop", false).apply()
-                stopped = true
-                renderPanel()
-                toast("Accessibility service band hai. Auto Drop rok diya.")
-                return
-            }
-
-            val saved = service.hasSavedSendPosition()
-
-            if (saved) {
-                service.tapSavedSendPosition()
-            } else {
-                service.clickVisibleSend()
-            }
-
-            val speedBased = prefs.getBoolean("speedBased", true)
-            val delay = if (speedBased) {
-                prefs.getInt("delay", 100).coerceIn(100, 1000)
-            } else {
-                300
-            }
-
-            if (!stopped && prefs.getBoolean("autoDrop", false)) {
-                handler.postDelayed(this, delay.toLong())
-            }
-        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -97,10 +55,6 @@ class ModOverlayService : Service() {
 
         if (panelView == null && tabView == null) {
             showMainPanel()
-        }
-
-        if (prefs.getBoolean("autoDrop", false)) {
-            startAutoDrop()
         }
 
         return START_NOT_STICKY
@@ -218,9 +172,11 @@ class ModOverlayService : Service() {
             return
         }
 
-        content.addView(panelButton("SET SEND POSITION", 12f, true) {
-            startPositionSelection()
-        })
+        content.addView(
+            panelButton("SET SEND POSITION", 12f, true) {
+                startPositionSelection()
+            }
+        )
 
         content.addView(
             panelLabel(
@@ -232,20 +188,52 @@ class ModOverlayService : Service() {
             )
         )
 
-        content.addView(panelButton(
-            if (prefs.getBoolean("speedBased", true)) {
-                "SPEED BASED: ON"
-            } else {
-                "SPEED BASED: OFF"
-            },
-            12f
-        ) {
-            val next = !prefs.getBoolean("speedBased", true)
-            prefs.edit().putBoolean("speedBased", next).apply()
-            renderPanel()
-        })
+        // Alphabet count selector: 1, 2, or 3
+        val alphabetCount = prefs
+            .getInt("alphabetCount", 1)
+            .coerceIn(1, 3)
 
-        val delay = prefs.getInt("delay", 100).coerceIn(100, 1000)
+        content.addView(panelLabel("Alphabet Count: $alphabetCount"))
+
+        val countRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        for (count in 1..3) {
+            countRow.addView(
+                panelButton(
+                    count.toString(),
+                    13f,
+                    alphabetCount == count
+                ) {
+                    prefs.edit()
+                        .putInt("alphabetCount", count)
+                        .apply()
+                    renderPanel()
+                },
+                equalParams()
+            )
+        }
+
+        content.addView(countRow)
+
+        content.addView(
+            panelButton(
+                if (prefs.getBoolean("speedBased", true)) {
+                    "SPEED BASED: ON"
+                } else {
+                    "SPEED BASED: OFF"
+                },
+                12f
+            ) {
+                val next = !prefs.getBoolean("speedBased", true)
+                prefs.edit().putBoolean("speedBased", next).apply()
+                renderPanel()
+            }
+        )
+
+        // Delay supports 0 ms through 1000 ms.
+        val delay = prefs.getInt("delay", 0).coerceIn(0, 1000)
 
         content.addView(panelLabel("Auto Drop Delay: $delay ms"))
 
@@ -253,30 +241,44 @@ class ModOverlayService : Service() {
             orientation = LinearLayout.HORIZONTAL
         }
 
-        delayRow.addView(panelButton("− 100 ms", 11f) {
-            val next = (prefs.getInt("delay", 100) - 100).coerceIn(100, 1000)
-            prefs.edit().putInt("delay", next).apply()
-            renderPanel()
-        }, equalParams())
+        delayRow.addView(
+            panelButton("− 100 ms", 11f) {
+                val next = (
+                    prefs.getInt("delay", 0) - 100
+                ).coerceIn(0, 1000)
 
-        delayRow.addView(panelButton("+ 100 ms", 11f) {
-            val next = (prefs.getInt("delay", 100) + 100).coerceIn(100, 1000)
-            prefs.edit().putInt("delay", next).apply()
-            renderPanel()
-        }, equalParams())
+                prefs.edit().putInt("delay", next).apply()
+                renderPanel()
+            },
+            equalParams()
+        )
+
+        delayRow.addView(
+            panelButton("+ 100 ms", 11f) {
+                val next = (
+                    prefs.getInt("delay", 0) + 100
+                ).coerceIn(0, 1000)
+
+                prefs.edit().putInt("delay", next).apply()
+                renderPanel()
+            },
+            equalParams()
+        )
 
         content.addView(delayRow)
 
-        content.addView(panelButton(
-            if (prefs.getBoolean("autoDrop", false)) {
-                "AUTO DROP: ON"
-            } else {
-                "AUTO DROP: OFF"
-            },
-            12f
-        ) {
-            setAutoDrop(!prefs.getBoolean("autoDrop", false))
-        })
+        content.addView(
+            panelButton(
+                if (prefs.getBoolean("autoDrop", false)) {
+                    "AUTO DROP: ON"
+                } else {
+                    "AUTO DROP: OFF"
+                },
+                12f
+            ) {
+                setAutoDrop(!prefs.getBoolean("autoDrop", false))
+            }
+        )
 
         content.addView(panelButton("STOP AUTO DROP", 12f) {
             stopAutoDrop()
@@ -318,43 +320,39 @@ class ModOverlayService : Service() {
 
         val enabled = prefs.getBoolean(key, defaultValue)
 
-        row.addView(panelButton(if (enabled) "ON" else "OFF", 12f) {
-            val next = !prefs.getBoolean(key, defaultValue)
-            prefs.edit().putBoolean(key, next).apply()
+        row.addView(
+            panelButton(if (enabled) "ON" else "OFF", 12f) {
+                val next = !prefs.getBoolean(key, defaultValue)
 
-            if (key == "autoDrop") {
-                setAutoDrop(next)
-            } else {
-                renderPanel()
+                if (key == "autoDrop") {
+                    setAutoDrop(next)
+                } else {
+                    prefs.edit().putBoolean(key, next).apply()
+                    renderPanel()
+                }
             }
-        })
+        )
 
         content.addView(row)
     }
 
+    // This only changes the Auto Drop setting.
+    // It deliberately does NOT run a repeating Send-click loop.
     private fun setAutoDrop(enabled: Boolean) {
         prefs.edit().putBoolean("autoDrop", enabled).apply()
-
-        if (enabled) {
-            startAutoDrop()
-        } else {
-            stopped = true
-            handler.removeCallbacks(autoTask)
-        }
-
         renderPanel()
-    }
 
-    private fun startAutoDrop() {
-        handler.removeCallbacks(autoTask)
-        stopped = false
-        handler.post(autoTask)
+        toast(
+            if (enabled) {
+                "Auto Drop ON"
+            } else {
+                "Auto Drop OFF"
+            }
+        )
     }
 
     private fun stopAutoDrop() {
-        stopped = true
         prefs.edit().putBoolean("autoDrop", false).apply()
-        handler.removeCallbacks(autoTask)
         renderPanel()
         toast("Auto Drop stopped")
     }
@@ -387,7 +385,8 @@ class ModOverlayService : Service() {
         ).apply {
             x = dp(100)
             y = dp(300)
-            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            flags =
+                flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         }
 
         markerView = marker
@@ -459,6 +458,7 @@ class ModOverlayService : Service() {
                 Color.rgb(103, 66, 185),
                 dp(18).toFloat()
             )
+
             setOnClickListener {
                 showMainPanel()
             }
@@ -509,8 +509,11 @@ class ModOverlayService : Service() {
         setPadding(dp(4), dp(2), dp(4), dp(2))
 
         background = roundedBackground(
-            if (highlighted) Color.rgb(103, 66, 185)
-            else Color.rgb(69, 53, 105),
+            if (highlighted) {
+                Color.rgb(103, 66, 185)
+            } else {
+                Color.rgb(69, 53, 105)
+            },
             dp(8).toFloat()
         )
 
@@ -583,13 +586,9 @@ class ModOverlayService : Service() {
     }
 
     override fun onDestroy() {
-        stopped = true
-        handler.removeCallbacksAndMessages(null)
-
         removePanelOnly()
         removeTabOnly()
         removeMarkerOnly()
-
         super.onDestroy()
     }
 }
