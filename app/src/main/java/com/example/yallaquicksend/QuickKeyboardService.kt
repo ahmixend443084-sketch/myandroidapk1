@@ -85,10 +85,6 @@ class QuickKeyboardService : InputMethodService() {
         if (::keyboardRoot.isInitialized) {
             renderKeys()
         }
-
-        if (autoDrop) {
-            handler.postDelayed(autoSendTask, delayMs.toLong())
-        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -163,7 +159,7 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun renderAlphabetKeys() {
-        // Alphabet keyboard ki 3 letter rows.
+        // Har letter row 61dp ki: 3 rows = 183dp.
         addKeyRow(listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"))
         addKeyRow(listOf("A", "S", "D", "F", "G", "H", "J", "K", "L"))
         addKeyRow(listOf("Z", "X", "C", "V", "B", "N", "M"))
@@ -194,12 +190,12 @@ class QuickKeyboardService : InputMethodService() {
             keyParams(1.5f)
         )
 
-        // Bottom row ki height number pad ki total body ke barabar.
+        // Bottom row 42dp: total alphabet area = 225dp.
         keyboardRoot.addView(
             bottom,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(184)
+                dp(keyHeight())
             )
         )
     }
@@ -322,16 +318,23 @@ class QuickKeyboardService : InputMethodService() {
                 makeButton(key, keyTextSize()) {
                     typeText(key.lowercase())
                 },
-                keyParams(1f)
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    1f
+                ).apply {
+                    setMargins(dp(2), dp(2), dp(2), dp(2))
+                }
             )
         }
 
-        // Har alphabet row ko equal height.
+        // Number pad ke 4 rows (184dp) ke muqable
+        // alphabet ki 3 rows ko 61dp diya gaya hai.
         keyboardRoot.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(46)
+                dp(61)
             )
         )
     }
@@ -437,7 +440,6 @@ class QuickKeyboardService : InputMethodService() {
         val service = YallaAccessibilityService.instance
 
         if (service == null) {
-            sendEnterKey()
             showToast("FLASH: Accessibility Service ON karo")
             return
         }
@@ -449,11 +451,9 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         if (!sent) {
-            sendEnterKey()
-
             showToast(
                 if (service.hasSavedSendPosition()) {
-                    "FLASH: Tap fail hua; Enter try kiya"
+                    "FLASH: Saved position par tap nahi hua"
                 } else {
                     "FLASH: Send button nahi mila; position set karo"
                 }
