@@ -35,11 +35,23 @@ class QuickKeyboardService : InputMethodService() {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
-    private val autoSendTask = Runnable {
-        loadSettings()
+    private val autoSendTask = object : Runnable {
+        override fun run() {
+            loadSettings()
 
-        if (autoDrop && !stopped) {
-            sendAction()
+            if (autoDrop && !stopped) {
+                sendAutomaticAction()
+
+                val nextDelay = if (speedBased) {
+                    delayMs.coerceIn(100, 1000)
+                } else {
+                    100
+                }
+
+                if (autoDrop && !stopped) {
+                    handler.postDelayed(this, nextDelay.toLong())
+                }
+            }
         }
     }
 
@@ -53,7 +65,7 @@ class QuickKeyboardService : InputMethodService() {
         speedBased = prefs.getBoolean("speedBased", true)
         enterSend = prefs.getBoolean("enterSend", true)
         keyboardSize = prefs.getInt("keyboardSize", 1).coerceIn(0, 2)
-        delayMs = prefs.getInt("delay", 100).coerceIn(0, 60000)
+        delayMs = prefs.getInt("delay", 100).coerceIn(100, 1000)
     }
 
     override fun onCreateInputView(): View {
@@ -342,16 +354,8 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun typeText(value: String) {
-        loadSettings()
-
         val connection = currentInputConnection ?: return
         connection.commitText(value, 1)
-
-        // No artificial 50 ms delay: schedule an immediate attempt.
-        if (autoDrop && !stopped) {
-            handler.removeCallbacks(autoSendTask)
-            handler.post(autoSendTask)
-        }
     }
 
     private fun deleteCharacter() {
@@ -373,7 +377,8 @@ class QuickKeyboardService : InputMethodService() {
         loadSettings()
 
         if (enterSend) {
-            sendAction()
+            // Manual Enter: saved position ko foran tap karo.
+            sendManualAction()
         } else {
             sendEnterKey()
         }
@@ -391,37 +396,45 @@ class QuickKeyboardService : InputMethodService() {
         )
     }
 
-    private fun sendAction() {
-        handler.removeCallbacks(autoSendTask)
-        loadSettings()
-
-        if (!enterSend) {
-            sendEnterKey()
-            return
-        }
-
-        if (stopped) return
-
+    private fun sendManualAction() {
         val service = YallaAccessibilityService.instance
 
         if (service == null) {
-            Toast.makeText(
-                this,
-                "FLASH: Accessibility Service ON karo",
-                Toast.LENGTH_SHORT
-            ).show()
+            showToast("FLASH: Accessibility Service ON karo")
             return
         }
 
-        val sent = service.clickVisibleSend()
+        val sent = if (service.hasSavedSendPosition()) {
+            service.tapSavedSendPosition()
+        } else {
+            service.clickVisibleSend()
+        }
 
         if (!sent) {
-            Toast.makeText(
-                this,
-                "FLASH: Yalla ka Send button nahi mila",
-                Toast.LENGTH_SHORT
-            ).show()
+            showToast(
+                if (service.hasSavedSendPosition()) {
+                    "FLASH: Saved position par tap nahi hua"
+                } else {
+                    "FLASH: Send button nahi mila; position set karo"
+                }
+            )
         }
+    }
+
+    private fun sendAutomaticAction() {
+        if (stopped || !autoDrop) return
+
+        val service = YallaAccessibilityService.instance ?: return
+
+        if (service.hasSavedSendPosition()) {
+            service.tapSavedSendPosition()
+        } else {
+            service.clickVisibleSend()
+        }
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun keyTextSize(): Float {
