@@ -3,11 +3,10 @@ package com.example.yallaquicksend
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Context
 import android.graphics.Path
-import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
@@ -20,7 +19,7 @@ class YallaAccessibilityService : AccessibilityService() {
     }
 
     private val prefs by lazy {
-        getSharedPreferences("settings", MODE_PRIVATE)
+        getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
     override fun onServiceConnected() {
@@ -28,38 +27,36 @@ class YallaAccessibilityService : AccessibilityService() {
         instance = this
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // Accessibility events are received while the service is enabled.
+    }
 
-    override fun onInterrupt() = Unit
+    override fun onInterrupt() {
+        // No continuous accessibility operation to interrupt.
+    }
 
     override fun onDestroy() {
-        if (instance === this) instance = null
+        if (instance === this) {
+            instance = null
+        }
         super.onDestroy()
     }
 
-    fun saveSendPosition(x: Int, y: Int) {
-        prefs.edit()
-            .putInt("sendPositionX", x)
-            .putInt("sendPositionY", y)
-            .putBoolean("sendPositionSaved", true)
-            .apply()
+    fun hasSavedSendPosition(): Boolean {
+        return prefs.getBoolean("sendPositionSaved", false)
     }
 
-    fun hasSavedSendPosition(): Boolean =
-        prefs.getBoolean("sendPositionSaved", false)
-
+    /**
+     * Taps the saved screen coordinate immediately by dispatching a gesture.
+     * This does not wait for the Auto Drop delay.
+     */
     fun tapSavedSendPosition(): Boolean {
         if (!hasSavedSendPosition()) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
 
         val x = prefs.getInt("sendPositionX", -1)
         val y = prefs.getInt("sendPositionY", -1)
 
-        if (x < 0 || y < 0) return false
-
-        return tapAt(x, y)
-    }
-
-    fun tapAt(x: Int, y: Int): Boolean {
         if (x < 0 || y < 0) return false
 
         val path = Path().apply {
@@ -68,257 +65,164 @@ class YallaAccessibilityService : AccessibilityService() {
 
         val gesture = GestureDescription.Builder()
             .addStroke(
-                GestureDescription.StrokeDescription(path, 0, 100)
+                GestureDescription.StrokeDescription(
+                    path,
+                    0L,
+                    50L
+                )
             )
             .build()
 
-        return dispatchGesture(gesture, null, null)
-    }
-
-    fun insertText(value: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-
         return try {
-            val focused =
-                root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                    ?: findEditable(root)
-                    ?: return false
-
-            try {
-                if (!focused.isEditable || !focused.isEnabled) {
-                    return false
-                }
-
-                val args = Bundle().apply {
-                    putCharSequence(
-                        AccessibilityNodeInfo
-                            .ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        value
-                    )
-                }
-
-                focused.performAction(
-                    AccessibilityNodeInfo.ACTION_SET_TEXT,
-                    args
-                )
-            } finally {
-                focused.recycle()
-            }
-        } finally {
-            root.recycle()
+            dispatchGesture(gesture, null, null)
+        } catch (_: Exception) {
+            false
         }
     }
 
-    fun deleteCharacter(): Boolean {
-        val root = rootInActiveWindow ?: return false
-
-        return try {
-            val focused =
-                root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                    ?: findEditable(root)
-                    ?: return false
-
-            try {
-                if (!focused.isEditable || !focused.isEnabled) {
-                    return false
-                }
-
-                val text = focused.text?.toString() ?: return false
-                if (text.isEmpty()) return false
-
-                val args = Bundle().apply {
-                    putCharSequence(
-                        AccessibilityNodeInfo
-                            .ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        text.dropLast(1)
-                    )
-                }
-
-                focused.performAction(
-                    AccessibilityNodeInfo.ACTION_SET_TEXT,
-                    args
-                )
-            } finally {
-                focused.recycle()
-            }
-        } finally {
-            root.recycle()
-        }
-    }
-
+    /**
+     * Searches visible accessibility nodes for a Send button.
+     */
     fun clickVisibleSend(): Boolean {
         val root = rootInActiveWindow ?: return false
 
         return try {
-            val labelled = findSendControl(root)
-
-            if (labelled != null) {
-                try {
-                    if (clickSelfOrClickableParent(labelled)) return true
-                } finally {
-                    labelled.recycle()
-                }
-            }
-
-            clickAdjacentSendControl(root)
+            findAndClickSend(root)
         } finally {
             root.recycle()
         }
     }
 
-    private fun findEditable(
-        node: AccessibilityNodeInfo
-    ): AccessibilityNodeInfo? {
-        if (node.isEditable && node.isFocused && node.isEnabled) {
-            return AccessibilityNodeInfo.obtain(node)
-        }
-
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val found = try {
-                findEditable(child)
-            } finally {
-                child.recycle()
-            }
-
-            if (found != null) return found
-        }
-
-        return null
-    }
-
-    private fun findSendControl(
-        node: AccessibilityNodeInfo
-    ): AccessibilityNodeInfo? {
-        if (node.isVisibleToUser && node.isEnabled && isSendLabel(node)) {
-            return AccessibilityNodeInfo.obtain(node)
-        }
-
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val found = try {
-                findSendControl(child)
-            } finally {
-                child.recycle()
-            }
-
-            if (found != null) return found
-        }
-
-        return null
-    }
-
-    private fun isSendLabel(node: AccessibilityNodeInfo): Boolean {
-        val label = buildString {
-            append(node.text?.toString().orEmpty())
-            append(' ')
-            append(node.contentDescription?.toString().orEmpty())
-            append(' ')
-            append(node.viewIdResourceName.orEmpty())
-        }.lowercase()
-
-        return label.contains("send") ||
-            label.contains("paper_plane") ||
-            label.contains("paper-plane") ||
-            label.contains("send_button")
-    }
-
-    private fun clickSelfOrClickableParent(
+    private fun findAndClickSend(
         node: AccessibilityNodeInfo
     ): Boolean {
-        var current: AccessibilityNodeInfo? =
-            AccessibilityNodeInfo.obtain(node)
+        val description = buildString {
+            append(node.text?.toString().orEmpty())
+            append(" ")
+            append(node.contentDescription?.toString().orEmpty())
+            append(" ")
+            append(node.viewIdResourceName.orEmpty())
+        }.trim().lowercase()
 
-        repeat(8) {
-            val item = current ?: return false
+        val looksLikeSend = description == "send" ||
+            description.contains("send button") ||
+            description.endsWith(":id/send") ||
+            description.endsWith("/send")
 
-            if (item.isEnabled && item.isClickable) {
-                val clicked = item.performAction(
-                    AccessibilityNodeInfo.ACTION_CLICK
-                )
-                item.recycle()
-                current = null
-                return clicked
+        if (looksLikeSend && node.isVisibleToUser && node.isEnabled) {
+            if (node.isClickable &&
+                node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            ) {
+                return true
             }
 
-            val parent = item.parent
-            item.recycle()
-            current = parent
+            val parent = node.parent
+            if (parent != null) {
+                val clicked = parent.isClickable &&
+                    parent.performAction(
+                        AccessibilityNodeInfo.ACTION_CLICK
+                    )
+                parent.recycle()
+                if (clicked) return true
+            }
         }
 
-        current?.recycle()
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val clicked = try {
+                findAndClickSend(child)
+            } finally {
+                child.recycle()
+            }
+
+            if (clicked) return true
+        }
+
         return false
     }
 
-    private fun clickAdjacentSendControl(
-        root: AccessibilityNodeInfo
-    ): Boolean {
-        val focused =
-            root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                ?: return false
+    /**
+     * Inserts text into the currently focused editable field.
+     */
+    fun insertText(value: String): Boolean {
+        val root = rootInActiveWindow ?: return false
 
         return try {
-            if (!focused.isEditable) return false
-
-            val inputBounds = Rect()
-            focused.getBoundsInScreen(inputBounds)
-
-            val candidate = findRightSideClickable(root, inputBounds)
-                ?: return false
+            val node = findFocusedEditable(root) ?: return false
 
             try {
-                clickSelfOrClickableParent(candidate)
+                val arguments = Bundle().apply {
+                    putCharSequence(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        value
+                    )
+                }
+
+                node.performAction(
+                    AccessibilityNodeInfo.ACTION_SET_TEXT,
+                    arguments
+                )
             } finally {
-                candidate.recycle()
+                node.recycle()
             }
         } finally {
-            focused.recycle()
+            root.recycle()
         }
     }
 
-    private fun findRightSideClickable(
-        node: AccessibilityNodeInfo,
-        inputBounds: Rect
+    /**
+     * Deletes the last character from the focused editable field.
+     */
+    fun deleteCharacter(): Boolean {
+        val root = rootInActiveWindow ?: return false
+
+        return try {
+            val node = findFocusedEditable(root) ?: return false
+
+            try {
+                val currentText = node.text?.toString() ?: return false
+                if (currentText.isEmpty()) return false
+
+                val newText = currentText.dropLast(1)
+
+                val arguments = Bundle().apply {
+                    putCharSequence(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        newText
+                    )
+                }
+
+                node.performAction(
+                    AccessibilityNodeInfo.ACTION_SET_TEXT,
+                    arguments
+                )
+            } finally {
+                node.recycle()
+            }
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun findFocusedEditable(
+        node: AccessibilityNodeInfo
     ): AccessibilityNodeInfo? {
-        var best: AccessibilityNodeInfo? = null
-        var bestDistance = Int.MAX_VALUE
-
-        fun visit(current: AccessibilityNodeInfo) {
-            if (current.isVisibleToUser &&
-                current.isEnabled &&
-                current.isClickable
-            ) {
-                val bounds = Rect()
-                current.getBoundsInScreen(bounds)
-
-                val verticallyAligned =
-                    bounds.bottom >= inputBounds.top &&
-                    bounds.top <= inputBounds.bottom
-
-                val distance = bounds.left - inputBounds.right
-
-                if (verticallyAligned &&
-                    bounds.left >= inputBounds.right - 12 &&
-                    distance in -12..180 &&
-                    distance < bestDistance
-                ) {
-                    best?.recycle()
-                    best = AccessibilityNodeInfo.obtain(current)
-                    bestDistance = distance
-                }
-            }
-
-            for (i in 0 until current.childCount) {
-                val child = current.getChild(i) ?: continue
-                try {
-                    visit(child)
-                } finally {
-                    child.recycle()
-                }
-            }
+        if (node.isEditable && node.isFocused) {
+            return AccessibilityNodeInfo.obtain(node)
         }
 
-        visit(node)
-        return best
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+
+            val result = try {
+                findFocusedEditable(child)
+            } finally {
+                child.recycle()
+            }
+
+            if (result != null) return result
+        }
+
+        return null
     }
 }
