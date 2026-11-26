@@ -2,6 +2,7 @@
 package com.example.yallaquicksend
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -27,9 +28,8 @@ class QuickKeyboardService : InputMethodService() {
     private var enterSend = true
     private var stopped = true
 
-    // MainActivity stores keyboard size as a percentage, e.g. 100.
     private var keyboardSize = 100
-    private var delayMs = 0
+    private var delayMs = 50
     private var alphabetCount = 26
 
     private lateinit var keyboardRoot: LinearLayout
@@ -41,7 +41,7 @@ class QuickKeyboardService : InputMethodService() {
 
     private val maxPendingAutoSends = 20
 
-    private val prefs by lazy {
+    private val prefs: SharedPreferences by lazy {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
@@ -49,9 +49,30 @@ class QuickKeyboardService : InputMethodService() {
     private val keyColor = Color.rgb(48, 49, 62)
     private val textColor = Color.WHITE
 
+    // Settings save hote hi open keyboard ko refresh karo.
+    private val settingsListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (
+                key == "keyboardSize" ||
+                key == "autoDrop" ||
+                key == "speedBased" ||
+                key == "enterSend" ||
+                key == "delay" ||
+                key == "alphabetCount" ||
+                key == "uppercaseMode"
+            ) {
+                handler.post {
+                    if (::keyboardRoot.isInitialized && !stopped) {
+                        renderKeys()
+                    }
+                }
+            }
+        }
+
     override fun onCreate() {
         super.onCreate()
         loadSettings()
+        prefs.registerOnSharedPreferenceChangeListener(settingsListener)
     }
 
     private fun loadSettings() {
@@ -62,7 +83,7 @@ class QuickKeyboardService : InputMethodService() {
         keyboardSize = prefs.getInt("keyboardSize", 100)
             .coerceIn(50, 200)
 
-        delayMs = prefs.getInt("delay", 0)
+        delayMs = prefs.getInt("delay", 50)
             .coerceIn(0, 5000)
 
         alphabetCount = prefs.getInt("alphabetCount", 26)
@@ -100,6 +121,7 @@ class QuickKeyboardService : InputMethodService() {
     override fun onDestroy() {
         stopped = true
         stopPendingActions()
+        prefs.unregisterOnSharedPreferenceChangeListener(settingsListener)
         super.onDestroy()
     }
 
@@ -155,6 +177,9 @@ class QuickKeyboardService : InputMethodService() {
         } else {
             renderAlphabetKeys(rows)
         }
+
+        keyboardRoot.requestLayout()
+        keyboardRows?.requestLayout()
     }
 
     private fun addToolbar(parent: LinearLayout) {
@@ -298,7 +323,7 @@ class QuickKeyboardService : InputMethodService() {
             grid,
             LinearLayout.LayoutParams(
                 0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(totalKeyRowsHeight()),
                 3f
             )
         )
@@ -337,7 +362,7 @@ class QuickKeyboardService : InputMethodService() {
             actions,
             LinearLayout.LayoutParams(
                 0,
-                dp((keyHeight() + 4) * 4),
+                dp(totalKeyRowsHeight()),
                 1.25f
             )
         )
@@ -346,7 +371,7 @@ class QuickKeyboardService : InputMethodService() {
             content,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp((keyHeight() + 4) * 4)
+                dp(totalKeyRowsHeight())
             )
         )
     }
@@ -442,10 +467,6 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    /**
-     * Typing stays immediate.
-     * Delay is applied only to queued automatic send actions.
-     */
     private fun typeText(value: String) {
         if (stopped || value.isEmpty()) return
 
@@ -470,8 +491,6 @@ class QuickKeyboardService : InputMethodService() {
 
     private fun queueAutomaticSend() {
         if (stopped || !autoDrop) return
-
-        // Prevent an unlimited queue from building up.
         if (pendingAutoSends >= maxPendingAutoSends) return
 
         pendingAutoSends++
@@ -493,7 +512,6 @@ class QuickKeyboardService : InputMethodService() {
 
         autoSendInProgress = true
 
-        // A tiny minimum gap avoids flooding the main thread when delay is 0.
         val waitMs = if (speedBased) {
             delayMs.coerceAtLeast(15)
         } else {
@@ -519,7 +537,6 @@ class QuickKeyboardService : InputMethodService() {
         if (stopped) return
 
         val connection = currentInputConnection ?: return
-
         val deleted = connection.deleteSurroundingText(1, 0)
 
         if (!deleted) {
@@ -604,11 +621,16 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
+    // Alphabet aur number-pad dono mein har key row ki height same hai.
     private fun keyHeight(): Int {
-        val baseHeight = 42f
-        return (baseHeight * keyboardSize / 100f)
+        return (42f * keyboardSize / 100f)
             .toInt()
             .coerceIn(28, 70)
+    }
+
+    // Number-pad ke 4 rows ki height.
+    private fun totalKeyRowsHeight(): Int {
+        return (keyHeight() + 4) * 4
     }
 
     private fun scaledTextSize(baseSize: Float): Float {
