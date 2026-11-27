@@ -238,15 +238,12 @@ class ModOverlayService : Service() {
         }
     }
 
-    // One shared count for the panel and keyboard.
-    // alphabetCount is the keyboard's existing preference key.
+    // Auto Drop count: 1–10. Shared with keyboard.
     private fun getAutoDropCount(): Int {
-        val count = prefs.getInt(
+        return prefs.getInt(
             "alphabetCount",
             prefs.getInt("autoDropQuantity", 3)
         ).coerceIn(1, 10)
-
-        return count
     }
 
     private fun saveAutoDropCount(count: Int) {
@@ -287,7 +284,6 @@ class ModOverlayService : Service() {
             )
         )
 
-        // Auto Drop count: 1–10.
         val autoDropQuantity = getAutoDropCount()
 
         content.addView(
@@ -301,8 +297,7 @@ class ModOverlayService : Service() {
 
         countRow.addView(
             panelButton("−", 16f) {
-                val next = (getAutoDropCount() - 1).coerceAtLeast(1)
-                saveAutoDropCount(next)
+                saveAutoDropCount(getAutoDropCount() - 1)
                 renderPanel()
             },
             equalParams()
@@ -317,8 +312,7 @@ class ModOverlayService : Service() {
 
         countRow.addView(
             panelButton("+", 16f) {
-                val next = (getAutoDropCount() + 1).coerceAtMost(10)
-                saveAutoDropCount(next)
+                saveAutoDropCount(getAutoDropCount() + 1)
                 renderPanel()
             },
             equalParams()
@@ -496,13 +490,7 @@ class ModOverlayService : Service() {
     private fun setAutoDrop(enabled: Boolean) {
         prefs.edit().putBoolean("autoDrop", enabled).apply()
 
-        if (!enabled) {
-            // Do not leave queued actions running after turning it off.
-            toast("Auto Drop OFF")
-        } else {
-            toast("Auto Drop ON")
-        }
-
+        toast(if (enabled) "Auto Drop ON" else "Auto Drop OFF")
         renderPanel()
     }
 
@@ -512,6 +500,8 @@ class ModOverlayService : Service() {
         toast("Auto Drop stopped")
     }
 
+    // SET SEND POSITION: small draggable + marker.
+    // Release the marker on Yalla's Send button to save its centre.
     private fun startPositionSelection() {
         if (YallaAccessibilityService.instance == null) {
             toast("Pehle FLASH Accessibility enable karo")
@@ -520,68 +510,99 @@ class ModOverlayService : Service() {
 
         removeMarkerOnly()
 
+        val markerSize = dp(42)
+
         val marker = TextView(this).apply {
-            text = "DRAG\nTO SEND"
-            textSize = 11f
+            text = "+"
+            textSize = 32f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setTextColor(white)
-            background = rounded(purple, 12)
-            elevation = dp(7).toFloat()
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(purple)
+                setStroke(dp(2), lightPurple)
+            }
+            elevation = dp(8).toFloat()
+            contentDescription = "Drag to set Yalla Send position"
         }
 
-        val markerWidth = dp(76)
-        val markerHeight = dp(52)
+        val screenWidth = resources.displayMetrics.widthPixels
+        val screenHeight = resources.displayMetrics.heightPixels
 
         val params = newWindowParams(
-            markerWidth,
-            markerHeight,
+            markerSize,
+            markerSize,
             Gravity.TOP or Gravity.START
         ).apply {
-            x = dp(100)
-            y = dp(300)
-            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            x = ((screenWidth - markerSize) / 2).coerceAtLeast(0)
+            y = (screenHeight / 2).coerceAtLeast(0)
         }
 
         markerView = marker
         markerParams = params
 
-        marker.setOnTouchListener { _, event ->
+        var downRawX = 0f
+        var downRawY = 0f
+        var startX = params.x
+        var startY = params.y
+        var moved = false
+
+        marker.setOnTouchListener { view, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> true
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startX = params.x
+                    startY = params.y
+                    moved = false
+                    true
+                }
 
                 MotionEvent.ACTION_MOVE -> {
-                    params.x = (
-                        event.rawX - markerWidth / 2f
-                    ).toInt().coerceAtLeast(0)
+                    val dx = (event.rawX - downRawX).toInt()
+                    val dy = (event.rawY - downRawY).toInt()
 
-                    params.y = (
-                        event.rawY - markerHeight / 2f
-                    ).toInt().coerceAtLeast(0)
+                    if (abs(dx) > dp(2) || abs(dy) > dp(2)) {
+                        moved = true
+                    }
 
-                    try {
-                        windowManager.updateViewLayout(marker, params)
-                    } catch (_: Exception) {
+                    if (moved) {
+                        params.x = (startX + dx).coerceIn(
+                            0,
+                            (screenWidth - markerSize).coerceAtLeast(0)
+                        )
+
+                        params.y = (startY + dy).toInt().coerceIn(
+                            0,
+                            (screenHeight - markerSize).coerceAtLeast(0)
+                        )
+
+                        try {
+                            windowManager.updateViewLayout(view, params)
+                        } catch (_: Exception) {
+                        }
                     }
 
                     true
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    val x = (
-                        params.x + markerWidth / 2
-                    ).coerceAtLeast(0)
+                    if (!moved) {
+                        toast("Marker ko Send button par drag karo")
+                        return@setOnTouchListener true
+                    }
 
-                    val y = (
-                        params.y + markerHeight / 2
-                    ).coerceAtLeast(0)
+                    val savedX = params.x + markerSize / 2
+                    val savedY = params.y + markerSize / 2
 
                     prefs.edit()
-                        .putInt("sendPositionX", x)
-                        .putInt("sendPositionY", y)
+                        .putInt("sendPositionX", savedX)
+                        .putInt("sendPositionY", savedY)
                         .putBoolean("sendPositionSaved", true)
                         .apply()
 
+                    // The marker disappears after saving.
                     removeMarkerOnly()
                     renderPanel()
                     toast("Send position save ho gayi")
@@ -594,7 +615,7 @@ class ModOverlayService : Service() {
 
         try {
             windowManager.addView(marker, params)
-            toast("Marker ko Yalla ke Send button par drag karo")
+            toast("Chhota + marker Send button par drag karo")
         } catch (_: Exception) {
             markerView = null
             markerParams = null
@@ -607,27 +628,52 @@ class ModOverlayService : Service() {
         showTab()
     }
 
+    // Small handle attached to the screen edge.
+    // Tap to reopen; drag vertically or across the screen to reposition.
     private fun showTab() {
         removeTabOnly()
 
+        val tabWidth = dp(38)
+        val tabHeight = dp(72)
+
         val tab = TextView(this).apply {
-            text = "🌙 FLASH"
-            textSize = 11f
+            text = "🌙\n‹"
+            textSize = 17f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setTextColor(white)
-            setPadding(dp(9), dp(8), dp(9), dp(8))
-            background = rounded(purple, 18)
+            setPadding(dp(3), dp(5), dp(3), dp(5))
+            background = GradientDrawable().apply {
+                setColor(purple)
+                cornerRadii = floatArrayOf(
+                    dp(18).toFloat(), dp(18).toFloat(),
+                    dp(0).toFloat(), dp(0).toFloat(),
+                    dp(0).toFloat(), dp(0).toFloat(),
+                    dp(18).toFloat(), dp(18).toFloat()
+                )
+                setStroke(dp(1), lightPurple)
+            }
             elevation = dp(8).toFloat()
+            contentDescription = "Open FLASH panel"
         }
 
+        val screenWidth = resources.displayMetrics.widthPixels
+        val screenHeight = resources.displayMetrics.heightPixels
+
         val params = newWindowParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            dp(42),
+            tabWidth,
+            tabHeight,
             Gravity.TOP or Gravity.START
         ).apply {
-            x = prefs.getInt("tabX", dp(3)).coerceAtLeast(0)
-            y = prefs.getInt("tabY", dp(180)).coerceAtLeast(0)
+            x = prefs.getInt(
+                "tabX",
+                (screenWidth - tabWidth).coerceAtLeast(0)
+            ).coerceIn(0, (screenWidth - tabWidth).coerceAtLeast(0))
+
+            y = prefs.getInt("tabY", dp(180)).coerceIn(
+                0,
+                (screenHeight - tabHeight).coerceAtLeast(0)
+            )
         }
 
         tabView = tab
@@ -659,12 +705,6 @@ class ModOverlayService : Service() {
                     }
 
                     if (dragged) {
-                        val screenWidth =
-                            resources.displayMetrics.widthPixels
-
-                        val screenHeight =
-                            resources.displayMetrics.heightPixels
-
                         params.x = (startX + dx).coerceIn(
                             0,
                             (screenWidth - view.width).coerceAtLeast(0)
@@ -686,18 +726,13 @@ class ModOverlayService : Service() {
 
                 MotionEvent.ACTION_UP -> {
                     if (dragged) {
-                        val screenWidth =
-                            resources.displayMetrics.widthPixels
-
-                        val viewWidth = view.width
-
-                        // Snap the chip to the nearest side.
+                        // Stick to the nearest screen edge.
                         params.x = if (
-                            params.x + viewWidth / 2 < screenWidth / 2
+                            params.x + view.width / 2 < screenWidth / 2
                         ) {
                             0
                         } else {
-                            (screenWidth - viewWidth).coerceAtLeast(0)
+                            (screenWidth - view.width).coerceAtLeast(0)
                         }
 
                         prefs.edit()
