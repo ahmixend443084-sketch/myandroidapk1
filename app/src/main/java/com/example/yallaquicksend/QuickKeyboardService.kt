@@ -45,11 +45,17 @@ class QuickKeyboardService : InputMethodService() {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
-    private val green = Color.rgb(0, 195, 105)
-    private val keyColor = Color.rgb(48, 49, 62)
-    private val textColor = Color.WHITE
+    // Gboard-inspired light palette.
+    private val surfaceColor = Color.rgb(248, 249, 253)
+    private val keyColor = Color.WHITE
+    private val functionColor = Color.rgb(229, 233, 243)
+    private val textColor = Color.rgb(32, 33, 38)
+    private val mutedTextColor = Color.rgb(92, 98, 113)
+    private val purpleColor = Color.rgb(111, 54, 220)
+    private val purpleLight = Color.rgb(239, 230, 255)
+    private val sendBlue = Color.rgb(30, 112, 242)
+    private val borderColor = Color.rgb(224, 228, 237)
 
-    // Settings save hote hi open keyboard ko refresh karo.
     private val settingsListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (
@@ -136,12 +142,12 @@ class QuickKeyboardService : InputMethodService() {
         keyboardRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(5), dp(5), dp(5), dp(5))
+            setPadding(dp(4), dp(4), dp(4), dp(4))
 
             background = GradientDrawable().apply {
                 cornerRadius = dp(17).toFloat()
-                setColor(Color.rgb(20, 21, 27))
-                setStroke(dp(2), Color.rgb(49, 210, 91))
+                setColor(surfaceColor)
+                setStroke(dp(1), borderColor)
             }
         }
 
@@ -179,7 +185,6 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         keyboardRoot.requestLayout()
-        keyboardRows?.requestLayout()
     }
 
     private fun addToolbar(parent: LinearLayout) {
@@ -207,7 +212,11 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         addToolbarButton(row, "⚙", false, 0.8f) {
-            showToast("FLASH keyboard settings app mein kholen")
+            showToast("FLASH settings app mein kholen")
+        }
+
+        addToolbarButton(row, "🌐", false, 0.8f) {
+            showToast("Language settings abhi configure karni hain")
         }
 
         parent.addView(
@@ -226,17 +235,27 @@ class QuickKeyboardService : InputMethodService() {
         weight: Float,
         action: () -> Unit
     ) {
+        val size = if (label.length > 2) {
+            scaledTextSize(12f)
+        } else {
+            scaledTextSize(18f)
+        }
+
         val button = makeButton(
             label,
-            if (label.length > 2) scaledTextSize(14f)
-            else scaledTextSize(19f),
-            active,
-            action
+            size,
+            highlighted = active,
+            functionKey = true,
+            action = action
         )
 
         row.addView(
             button,
-            LinearLayout.LayoutParams(0, dp(keyHeight()), weight).apply {
+            LinearLayout.LayoutParams(
+                0,
+                dp(keyHeight()),
+                weight
+            ).apply {
                 setMargins(dp(2), dp(2), dp(2), dp(2))
             }
         )
@@ -298,11 +317,38 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun renderNumberPad(rows: LinearLayout) {
+        val totalHeight = totalKeyRowsHeight()
+
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
 
+        // Left column: symbols and ABC switch.
+        val left = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+
+        listOf("+", "-", "*", "/", "ABC").forEach { label ->
+            addWeightedSideKey(left, label) {
+                when (label) {
+                    "ABC" -> {
+                        numbersMode = false
+                        renderKeys()
+                    }
+
+                    else -> typeText(label)
+                }
+            }
+        }
+
+        content.addView(
+            left,
+            LinearLayout.LayoutParams(0, dp(totalHeight), 0.85f)
+        )
+
+        // Center: number grid.
         val grid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -312,67 +358,77 @@ class QuickKeyboardService : InputMethodService() {
             listOf("1", "2", "3"),
             listOf("4", "5", "6"),
             listOf("7", "8", "9"),
-            listOf("-", "0", ".")
+            listOf(",", "0", ".")
         ).forEach { keys ->
-            addKeyRow(grid, keys) {
-                typeText(it)
+            addKeyRow(grid, keys) { key ->
+                typeText(key)
             }
         }
 
         content.addView(
             grid,
-            LinearLayout.LayoutParams(
-                0,
-                dp(totalKeyRowsHeight()),
-                3f
-            )
+            LinearLayout.LayoutParams(0, dp(totalHeight), 3f)
         )
 
+        // Right column: delete, return and send.
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
 
-        actions.addView(
-            makeButton("⌫", scaledTextSize(25f)) {
-                deleteCharacter()
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyHeight())
-            ).apply {
-                setMargins(dp(2), dp(2), dp(2), dp(2))
-            }
-        )
+        addWeightedSideKey(actions, "⌫") {
+            deleteCharacter()
+        }
 
-        actions.addView(
-            makeButton("➤\nSEND", scaledTextSize(17f), true) {
-                handleEnter()
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                3f
-            ).apply {
-                setMargins(dp(2), dp(2), dp(2), dp(2))
-            }
-        )
+        addWeightedSideKey(actions, "↵") {
+            sendEnterKey()
+        }
+
+        addWeightedSideKey(
+            actions,
+            "✓",
+            highlighted = true
+        ) {
+            handleEnter()
+        }
 
         content.addView(
             actions,
-            LinearLayout.LayoutParams(
-                0,
-                dp(totalKeyRowsHeight()),
-                1.25f
-            )
+            LinearLayout.LayoutParams(0, dp(totalHeight), 0.85f)
         )
 
         rows.addView(
             content,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(totalKeyRowsHeight())
+                dp(totalHeight)
             )
+        )
+    }
+
+    private fun addWeightedSideKey(
+        parent: LinearLayout,
+        label: String,
+        highlighted: Boolean = false,
+        action: () -> Unit
+    ) {
+        parent.addView(
+            makeButton(
+                label,
+                scaledTextSize(
+                    if (label == "ABC") 13f else 21f
+                ),
+                highlighted = highlighted,
+                functionKey = true,
+                action = action
+            ),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ).apply {
+                setMargins(dp(2), dp(2), dp(2), dp(2))
+            }
         )
     }
 
@@ -391,7 +447,6 @@ class QuickKeyboardService : InputMethodService() {
             val display = when (key) {
                 "SHIFT" -> if (uppercaseMode) "⬆" else "⇧"
                 "SPACE" -> "English"
-
                 else -> if (key.length == 1 && key[0].isLetter()) {
                     if (uppercaseMode) key.uppercase()
                     else key
@@ -407,8 +462,17 @@ class QuickKeyboardService : InputMethodService() {
                 else -> keyTextSize()
             }
 
+            val isFunction = key in listOf(
+                "SHIFT", "⌫", "?123", "SEND"
+            )
+
             row.addView(
-                makeButton(display, size, key == "SEND") {
+                makeButton(
+                    display,
+                    size,
+                    highlighted = key == "SEND",
+                    functionKey = isFunction
+                ) {
                     if (customAction != null) {
                         customAction(key)
                     } else {
@@ -438,14 +502,25 @@ class QuickKeyboardService : InputMethodService() {
         label: String,
         textSize: Float,
         highlighted: Boolean = false,
+        functionKey: Boolean = false,
         action: () -> Unit
     ): Button {
         return Button(this).apply {
             text = label
             this.textSize = textSize
             isAllCaps = false
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(textColor)
+            typeface = Typeface.create(
+                "sans-serif-medium",
+                Typeface.NORMAL
+            )
+            includeFontPadding = false
+            setTextColor(
+                when {
+                    highlighted -> Color.WHITE
+                    label == "SEND" -> purpleColor
+                    else -> textColor
+                }
+            )
             gravity = Gravity.CENTER
 
             minWidth = 0
@@ -455,22 +530,41 @@ class QuickKeyboardService : InputMethodService() {
 
             setPadding(dp(1), dp(1), dp(1), dp(1))
             stateListAnimator = null
+            isHapticFeedbackEnabled = false
 
             background = GradientDrawable().apply {
                 cornerRadius = dp(9).toFloat()
-                setColor(if (highlighted) green else keyColor)
+
+                setColor(
+                    when {
+                        highlighted -> sendBlue
+                        label == "ABC" -> purpleLight
+                        label == "SEND" -> purpleLight
+                        functionKey -> functionColor
+                        else -> keyColor
+                    }
+                )
+
+                if (!highlighted && !functionKey) {
+                    setStroke(dp(1), borderColor)
+                }
             }
 
             setOnClickListener {
-                if (!stopped) action()
+                if (!stopped) {
+                    action()
+                }
             }
         }
     }
 
+    // Direct commitText keeps normal typing on the fast path.
+    // No layout redraw is performed for each typed character.
     private fun typeText(value: String) {
         if (stopped || value.isEmpty()) return
 
         val connection = currentInputConnection ?: return
+
         connection.commitText(value, 1)
 
         if (!autoDrop) {
@@ -537,6 +631,7 @@ class QuickKeyboardService : InputMethodService() {
         if (stopped) return
 
         val connection = currentInputConnection ?: return
+
         val deleted = connection.deleteSurroundingText(1, 0)
 
         if (!deleted) {
@@ -621,14 +716,13 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    // Alphabet aur number-pad dono mein har key row ki height same hai.
+    // Same key height in ABC and numeric layouts.
     private fun keyHeight(): Int {
         return (42f * keyboardSize / 100f)
             .toInt()
             .coerceIn(28, 70)
     }
 
-    // Number-pad ke 4 rows ki height.
     private fun totalKeyRowsHeight(): Int {
         return (keyHeight() + 4) * 4
     }
