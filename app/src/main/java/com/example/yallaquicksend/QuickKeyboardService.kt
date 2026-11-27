@@ -30,7 +30,9 @@ class QuickKeyboardService : InputMethodService() {
 
     private var keyboardSize = 100
     private var delayMs = 50
-    private var alphabetCount = 26
+
+    // Auto Drop count is now limited to 1–10.
+    private var alphabetCount = 3
 
     private lateinit var keyboardRoot: LinearLayout
     private var keyboardRows: LinearLayout? = null
@@ -45,7 +47,6 @@ class QuickKeyboardService : InputMethodService() {
         getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
-    // Gboard-inspired light palette.
     private val surfaceColor = Color.rgb(248, 249, 253)
     private val keyColor = Color.WHITE
     private val functionColor = Color.rgb(229, 233, 243)
@@ -92,8 +93,9 @@ class QuickKeyboardService : InputMethodService() {
         delayMs = prefs.getInt("delay", 50)
             .coerceIn(0, 5000)
 
-        alphabetCount = prefs.getInt("alphabetCount", 26)
-            .coerceIn(1, 100)
+        // Minimum 1, maximum 10, default 3.
+        alphabetCount = prefs.getInt("alphabetCount", 3)
+            .coerceIn(1, 10)
 
         uppercaseMode = prefs.getBoolean("uppercaseMode", false)
     }
@@ -324,7 +326,6 @@ class QuickKeyboardService : InputMethodService() {
             gravity = Gravity.CENTER
         }
 
-        // Left column: symbols and ABC switch.
         val left = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -348,7 +349,6 @@ class QuickKeyboardService : InputMethodService() {
             LinearLayout.LayoutParams(0, dp(totalHeight), 0.85f)
         )
 
-        // Center: number grid.
         val grid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -370,7 +370,6 @@ class QuickKeyboardService : InputMethodService() {
             LinearLayout.LayoutParams(0, dp(totalHeight), 3f)
         )
 
-        // Right column: delete, return and send.
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -509,11 +508,14 @@ class QuickKeyboardService : InputMethodService() {
             text = label
             this.textSize = textSize
             isAllCaps = false
+
             typeface = Typeface.create(
                 "sans-serif-medium",
                 Typeface.NORMAL
             )
+
             includeFontPadding = false
+
             setTextColor(
                 when {
                     highlighted -> Color.WHITE
@@ -521,8 +523,8 @@ class QuickKeyboardService : InputMethodService() {
                     else -> textColor
                 }
             )
-            gravity = Gravity.CENTER
 
+            gravity = Gravity.CENTER
             minWidth = 0
             minimumWidth = 0
             minHeight = 0
@@ -558,8 +560,8 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    // Direct commitText keeps normal typing on the fast path.
-    // No layout redraw is performed for each typed character.
+    // Normal typing remains on the fast path.
+    // Auto Drop counts non-whitespace characters.
     private fun typeText(value: String) {
         if (stopped || value.isEmpty()) return
 
@@ -573,9 +575,13 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         val countable = value.count { !it.isWhitespace() }
+
         if (countable == 0) return
 
         autoDropCount += countable
+
+        // Use the latest setting and enforce the 1–10 limit.
+        loadSettings()
 
         while (autoDropCount >= alphabetCount) {
             autoDropCount -= alphabetCount
