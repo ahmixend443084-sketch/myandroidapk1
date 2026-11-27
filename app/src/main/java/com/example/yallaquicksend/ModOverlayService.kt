@@ -267,31 +267,62 @@ class ModOverlayService : Service() {
             )
         )
 
-        val alphabetCount = prefs.getInt("alphabetCount", 1).coerceIn(1, 3)
+        val autoDropQuantity = prefs
+            .getInt("autoDropQuantity", 1)
+            .coerceIn(1, 10)
 
-        content.addView(panelLabel("Aa  Alphabet Count: $alphabetCount"))
+        content.addView(
+            panelLabel("⬇  Auto Drop Count: $autoDropQuantity")
+        )
 
         val countRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
-        for (count in 1..3) {
-            countRow.addView(
-                panelButton(
-                    count.toString(),
-                    12f,
-                    alphabetCount == count
-                ) {
-                    prefs.edit().putInt("alphabetCount", count).apply()
+        countRow.addView(
+            panelButton("−", 16f) {
+                val current = prefs
+                    .getInt("autoDropQuantity", 1)
+                    .coerceIn(1, 10)
+
+                if (current > 1) {
+                    prefs.edit()
+                        .putInt("autoDropQuantity", current - 1)
+                        .apply()
                     renderPanel()
-                },
-                equalParams()
-            )
-        }
+                }
+            },
+            equalParams()
+        )
+
+        countRow.addView(
+            panelButton("$autoDropQuantity / 10", 12f, true) {
+                toast("Auto Drop Count: $autoDropQuantity")
+            },
+            equalParams()
+        )
+
+        countRow.addView(
+            panelButton("+", 16f) {
+                val current = prefs
+                    .getInt("autoDropQuantity", 1)
+                    .coerceIn(1, 10)
+
+                if (current < 10) {
+                    prefs.edit()
+                        .putInt("autoDropQuantity", current + 1)
+                        .apply()
+                    renderPanel()
+                }
+            },
+            equalParams()
+        )
 
         content.addView(countRow)
 
-        val keyboardSize = prefs.getInt("keyboardSize", 100).coerceIn(50, 200)
+        val keyboardSize = prefs.getInt("keyboardSize", 100)
+            .coerceIn(50, 200)
 
         content.addView(panelLabel("⌨  Keyboard Size: $keyboardSize%"))
 
@@ -618,7 +649,6 @@ class ModOverlayService : Service() {
                         val screenWidth = resources.displayMetrics.widthPixels
                         val viewWidth = view.width
 
-                        // Drag karne ke baad tab ko qareebi side par chipka do.
                         params.x = if (
                             params.x + viewWidth / 2 < screenWidth / 2
                         ) {
