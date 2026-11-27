@@ -30,8 +30,6 @@ class QuickKeyboardService : InputMethodService() {
 
     private var keyboardSize = 100
     private var delayMs = 50
-
-    // Auto Drop threshold: 1–10 characters.
     private var alphabetCount = 3
 
     private lateinit var keyboardRoot: LinearLayout
@@ -72,7 +70,6 @@ class QuickKeyboardService : InputMethodService() {
                 handler.post {
                     loadSettings()
 
-                    // Auto Drop OFF: cancel queued sends immediately.
                     if (key == "autoDrop" && !autoDrop) {
                         stopPendingActions()
                     }
@@ -101,13 +98,10 @@ class QuickKeyboardService : InputMethodService() {
         delayMs = prefs.getInt("delay", 50)
             .coerceIn(0, 5000)
 
-        // Prefer the panel's shared Auto Drop count.
-        val savedCount = prefs.getInt(
+        alphabetCount = prefs.getInt(
             "alphabetCount",
             prefs.getInt("autoDropQuantity", 3)
-        )
-
-        alphabetCount = savedCount.coerceIn(1, 10)
+        ).coerceIn(1, 10)
 
         uppercaseMode = prefs.getBoolean("uppercaseMode", false)
     }
@@ -190,11 +184,12 @@ class QuickKeyboardService : InputMethodService() {
         val rows = keyboardRows ?: return
         rows.removeAllViews()
 
-        addToolbar(rows)
-
+        // Number mode has NO ABC/123/emoji/settings/language toolbar.
+        // Alphabet mode keeps its original toolbar.
         if (numbersMode) {
             renderNumberPad(rows)
         } else {
+            addToolbar(rows)
             renderAlphabetKeys(rows)
         }
 
@@ -208,17 +203,13 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         addToolbarButton(row, "ABC", !numbersMode, 1f) {
-            if (numbersMode) {
-                numbersMode = false
-                renderKeys()
-            }
+            numbersMode = false
+            renderKeys()
         }
 
         addToolbarButton(row, "123", numbersMode, 1f) {
-            if (!numbersMode) {
-                numbersMode = true
-                renderKeys()
-            }
+            numbersMode = true
+            renderKeys()
         }
 
         addToolbarButton(row, "😊", false, 0.8f) {
@@ -255,21 +246,15 @@ class QuickKeyboardService : InputMethodService() {
             scaledTextSize(18f)
         }
 
-        val button = makeButton(
-            label,
-            size,
-            highlighted = active,
-            functionKey = true,
-            action = action
-        )
-
         row.addView(
-            button,
-            LinearLayout.LayoutParams(
-                0,
-                dp(keyHeight()),
-                weight
-            ).apply {
+            makeButton(
+                label,
+                size,
+                highlighted = active,
+                functionKey = true,
+                action = action
+            ),
+            LinearLayout.LayoutParams(0, dp(keyHeight()), weight).apply {
                 setMargins(dp(2), dp(2), dp(2), dp(2))
             }
         )
@@ -294,11 +279,9 @@ class QuickKeyboardService : InputMethodService() {
             when (key) {
                 "SHIFT" -> {
                     uppercaseMode = !uppercaseMode
-
                     prefs.edit()
                         .putBoolean("uppercaseMode", uppercaseMode)
                         .apply()
-
                     renderKeys()
                 }
 
@@ -337,12 +320,13 @@ class QuickKeyboardService : InputMethodService() {
             gravity = Gravity.CENTER
         }
 
+        // Left column: ABC, +, -, *, /
         val left = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
 
-        listOf("+", "-", "*", "/", "ABC").forEach { label ->
+        listOf("ABC", "+", "-", "*", "/").forEach { label ->
             addWeightedSideKey(left, label) {
                 when (label) {
                     "ABC" -> {
@@ -357,9 +341,14 @@ class QuickKeyboardService : InputMethodService() {
 
         content.addView(
             left,
-            LinearLayout.LayoutParams(0, dp(totalHeight), 0.85f)
+            LinearLayout.LayoutParams(
+                0,
+                dp(totalHeight),
+                0.85f
+            )
         )
 
+        // Center: number keys.
         val grid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -378,33 +367,62 @@ class QuickKeyboardService : InputMethodService() {
 
         content.addView(
             grid,
-            LinearLayout.LayoutParams(0, dp(totalHeight), 3f)
+            LinearLayout.LayoutParams(
+                0,
+                dp(totalHeight),
+                3f
+            )
         )
 
+        // Right column: backspace on top and a large Send button.
+        // The Enter key has been removed.
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
 
-        addWeightedSideKey(actions, "⌫") {
-            deleteCharacter()
-        }
+        actions.addView(
+            makeButton(
+                "⌫",
+                scaledTextSize(21f),
+                functionKey = true
+            ) {
+                deleteCharacter()
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ).apply {
+                setMargins(dp(2), dp(2), dp(2), dp(2))
+            }
+        )
 
-        addWeightedSideKey(actions, "↵") {
-            sendEnterKey()
-        }
-
-        addWeightedSideKey(
-            actions,
-            "✓",
-            highlighted = true
-        ) {
-            handleEnter()
-        }
+        actions.addView(
+            makeButton(
+                "➤\nSend",
+                scaledTextSize(16f),
+                highlighted = true,
+                functionKey = true
+            ) {
+                handleEnter()
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                3f
+            ).apply {
+                setMargins(dp(2), dp(2), dp(2), dp(2))
+            }
+        )
 
         content.addView(
             actions,
-            LinearLayout.LayoutParams(0, dp(totalHeight), 0.85f)
+            LinearLayout.LayoutParams(
+                0,
+                dp(totalHeight),
+                0.85f
+            )
         )
 
         rows.addView(
@@ -523,6 +541,11 @@ class QuickKeyboardService : InputMethodService() {
             )
 
             includeFontPadding = false
+            gravity = Gravity.CENTER
+            minWidth = 0
+            minimumWidth = 0
+            minHeight = 0
+            minimumHeight = 0
 
             setTextColor(
                 when {
@@ -531,12 +554,6 @@ class QuickKeyboardService : InputMethodService() {
                     else -> textColor
                 }
             )
-
-            gravity = Gravity.CENTER
-            minWidth = 0
-            minimumWidth = 0
-            minHeight = 0
-            minimumHeight = 0
 
             setPadding(dp(1), dp(1), dp(1), dp(1))
             stateListAnimator = null
@@ -561,14 +578,12 @@ class QuickKeyboardService : InputMethodService() {
             }
 
             setOnClickListener {
-                if (!stopped) {
-                    action()
-                }
+                if (!stopped) action()
             }
         }
     }
 
-    // Normal typing stays fast. Auto Drop counts non-whitespace characters.
+    // Auto Drop counts non-whitespace characters.
     private fun typeText(value: String) {
         if (stopped || value.isEmpty()) return
 
@@ -607,9 +622,7 @@ class QuickKeyboardService : InputMethodService() {
             !autoDrop ||
             autoSendInProgress ||
             pendingAutoSends <= 0
-        ) {
-            return
-        }
+        ) return
 
         loadSettings()
 
@@ -657,17 +670,10 @@ class QuickKeyboardService : InputMethodService() {
 
         if (!deleted) {
             connection.sendKeyEvent(
-                KeyEvent(
-                    KeyEvent.ACTION_DOWN,
-                    KeyEvent.KEYCODE_DEL
-                )
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)
             )
-
             connection.sendKeyEvent(
-                KeyEvent(
-                    KeyEvent.ACTION_UP,
-                    KeyEvent.KEYCODE_DEL
-                )
+                KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL)
             )
         }
     }
@@ -688,17 +694,10 @@ class QuickKeyboardService : InputMethodService() {
         val connection = currentInputConnection ?: return
 
         connection.sendKeyEvent(
-            KeyEvent(
-                KeyEvent.ACTION_DOWN,
-                KeyEvent.KEYCODE_ENTER
-            )
+            KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)
         )
-
         connection.sendKeyEvent(
-            KeyEvent(
-                KeyEvent.ACTION_UP,
-                KeyEvent.KEYCODE_ENTER
-            )
+            KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER)
         )
     }
 
@@ -737,7 +736,7 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    // Same key height in alphabet and number-pad modes.
+    // Same key height for alphabet and number-pad keys.
     private fun keyHeight(): Int {
         return (42f * keyboardSize / 100f)
             .toInt()
