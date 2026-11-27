@@ -31,7 +31,7 @@ class QuickKeyboardService : InputMethodService() {
     private var keyboardSize = 100
     private var delayMs = 50
 
-    // Auto Drop count is now limited to 1–10.
+    // Auto Drop threshold: 1–10 characters.
     private var alphabetCount = 3
 
     private lateinit var keyboardRoot: LinearLayout
@@ -51,7 +51,6 @@ class QuickKeyboardService : InputMethodService() {
     private val keyColor = Color.WHITE
     private val functionColor = Color.rgb(229, 233, 243)
     private val textColor = Color.rgb(32, 33, 38)
-    private val mutedTextColor = Color.rgb(92, 98, 113)
     private val purpleColor = Color.rgb(111, 54, 220)
     private val purpleLight = Color.rgb(239, 230, 255)
     private val sendBlue = Color.rgb(30, 112, 242)
@@ -59,6 +58,7 @@ class QuickKeyboardService : InputMethodService() {
 
     private val settingsListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+
             if (
                 key == "keyboardSize" ||
                 key == "autoDrop" ||
@@ -66,9 +66,17 @@ class QuickKeyboardService : InputMethodService() {
                 key == "enterSend" ||
                 key == "delay" ||
                 key == "alphabetCount" ||
+                key == "autoDropQuantity" ||
                 key == "uppercaseMode"
             ) {
                 handler.post {
+                    loadSettings()
+
+                    // Auto Drop OFF: cancel queued sends immediately.
+                    if (key == "autoDrop" && !autoDrop) {
+                        stopPendingActions()
+                    }
+
                     if (::keyboardRoot.isInitialized && !stopped) {
                         renderKeys()
                     }
@@ -93,9 +101,13 @@ class QuickKeyboardService : InputMethodService() {
         delayMs = prefs.getInt("delay", 50)
             .coerceIn(0, 5000)
 
-        // Minimum 1, maximum 10, default 3.
-        alphabetCount = prefs.getInt("alphabetCount", 3)
-            .coerceIn(1, 10)
+        // Prefer the panel's shared Auto Drop count.
+        val savedCount = prefs.getInt(
+            "alphabetCount",
+            prefs.getInt("autoDropQuantity", 3)
+        )
+
+        alphabetCount = savedCount.coerceIn(1, 10)
 
         uppercaseMode = prefs.getBoolean("uppercaseMode", false)
     }
@@ -293,8 +305,7 @@ class QuickKeyboardService : InputMethodService() {
                 "⌫" -> deleteCharacter()
 
                 else -> typeText(
-                    if (uppercaseMode) key.uppercase()
-                    else key
+                    if (uppercaseMode) key.uppercase() else key
                 )
             }
         }
@@ -414,9 +425,7 @@ class QuickKeyboardService : InputMethodService() {
         parent.addView(
             makeButton(
                 label,
-                scaledTextSize(
-                    if (label == "ABC") 13f else 21f
-                ),
+                scaledTextSize(if (label == "ABC") 13f else 21f),
                 highlighted = highlighted,
                 functionKey = true,
                 action = action
@@ -447,8 +456,7 @@ class QuickKeyboardService : InputMethodService() {
                 "SHIFT" -> if (uppercaseMode) "⬆" else "⇧"
                 "SPACE" -> "English"
                 else -> if (key.length == 1 && key[0].isLetter()) {
-                    if (uppercaseMode) key.uppercase()
-                    else key
+                    if (uppercaseMode) key.uppercase() else key
                 } else {
                     key
                 }
@@ -560,14 +568,14 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    // Normal typing remains on the fast path.
-    // Auto Drop counts non-whitespace characters.
+    // Normal typing stays fast. Auto Drop counts non-whitespace characters.
     private fun typeText(value: String) {
         if (stopped || value.isEmpty()) return
 
         val connection = currentInputConnection ?: return
-
         connection.commitText(value, 1)
+
+        loadSettings()
 
         if (!autoDrop) {
             autoDropCount = 0
@@ -575,13 +583,9 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         val countable = value.count { !it.isWhitespace() }
-
         if (countable == 0) return
 
         autoDropCount += countable
-
-        // Use the latest setting and enforce the 1–10 limit.
-        loadSettings()
 
         while (autoDropCount >= alphabetCount) {
             autoDropCount -= alphabetCount
@@ -598,15 +602,19 @@ class QuickKeyboardService : InputMethodService() {
     }
 
     private fun processAutoSendQueue() {
-        if (stopped || autoSendInProgress || pendingAutoSends <= 0) {
+        if (
+            stopped ||
+            !autoDrop ||
+            autoSendInProgress ||
+            pendingAutoSends <= 0
+        ) {
             return
         }
 
         loadSettings()
 
         if (!autoDrop) {
-            pendingAutoSends = 0
-            autoDropCount = 0
+            stopPendingActions()
             return
         }
 
@@ -619,16 +627,24 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         handler.postDelayed({
+            if (stopped || !autoDrop) {
+                stopPendingActions()
+                return@postDelayed
+            }
+
             try {
-                if (!stopped && autoDrop) {
-                    sendAutomaticAction()
-                }
+                sendAutomaticAction()
             } finally {
                 pendingAutoSends =
                     (pendingAutoSends - 1).coerceAtLeast(0)
 
                 autoSendInProgress = false
-                processAutoSendQueue()
+
+                if (!stopped && autoDrop) {
+                    processAutoSendQueue()
+                } else {
+                    stopPendingActions()
+                }
             }
         }, waitMs.toLong())
     }
@@ -637,7 +653,6 @@ class QuickKeyboardService : InputMethodService() {
         if (stopped) return
 
         val connection = currentInputConnection ?: return
-
         val deleted = connection.deleteSurroundingText(1, 0)
 
         if (!deleted) {
@@ -722,7 +737,7 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    // Same key height in ABC and numeric layouts.
+    // Same key height in alphabet and number-pad modes.
     private fun keyHeight(): Int {
         return (42f * keyboardSize / 100f)
             .toInt()
