@@ -1,0 +1,284 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLASH🌙 Owner Panel</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#100d1b;
+  color:white;
+  padding:20px;
+}
+.container{max-width:650px;margin:25px auto}
+h1{color:#c4a3ff;text-align:center}
+.card{
+  background:#1e1930;
+  border:1px solid #3b3156;
+  padding:20px;
+  border-radius:15px;
+  margin-bottom:18px;
+}
+input,select,button{
+  width:100%;
+  padding:13px;
+  margin:7px 0;
+  border-radius:8px;
+  border:1px solid #51436f;
+  font-size:15px;
+}
+input,select{background:#100d1b;color:white}
+button{
+  background:#8b5cf6;
+  color:white;
+  border:0;
+  font-weight:bold;
+  cursor:pointer;
+}
+button:hover{background:#7442dc}
+.secondary{background:#38304c}
+.danger{background:#b83250}
+.hidden{display:none}
+.status{color:#c4a3ff;white-space:pre-wrap;overflow-wrap:anywhere}
+.license{
+  background:#151123;
+  border:1px solid #44375e;
+  border-radius:10px;
+  padding:13px;
+  margin-top:12px;
+  overflow-wrap:anywhere;
+}
+.small{font-size:12px;color:#c5bbd9}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h1>🌙 FLASH OWNER PANEL</h1>
+
+<div class="card" id="loginCard">
+<h2>Owner Login</h2>
+<input id="email" type="email" placeholder="Owner email">
+<input id="password" type="password" placeholder="Password">
+<button id="loginBtn">Login</button>
+<p id="loginStatus" class="status"></p>
+</div>
+
+<div id="dashboard" class="hidden">
+
+<div class="card">
+<h2>Owner Account</h2>
+<p id="ownerEmail"></p>
+<button id="logoutBtn" class="secondary">Logout</button>
+</div>
+
+<div class="card">
+<h2>Create License</h2>
+
+<input id="licenseId" placeholder="License key / customer ID">
+
+<select id="licenseType">
+<option value="free">Free License</option>
+<option value="lifetime">Lifetime License — Rs.1500</option>
+</select>
+
+<input id="deviceId" placeholder="Device ID (optional)">
+
+<button id="createBtn">Create License</button>
+<p id="createStatus" class="status"></p>
+</div>
+
+<div class="card">
+<h2>Manage Licenses</h2>
+<button id="refreshBtn" class="secondary">Refresh Licenses</button>
+<div id="licenseList"></div>
+<p id="listStatus" class="status"></p>
+</div>
+
+</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<script>
+// Firebase Console ke Web App config se ye object replace karo.
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  appId: "YOUR_WEB_APP_ID"
+};
+
+const loginCard = document.getElementById("loginCard");
+const dashboard = document.getElementById("dashboard");
+const loginStatus = document.getElementById("loginStatus");
+
+let auth = null;
+let db = null;
+
+const configMissing =
+  Object.values(firebaseConfig).some(v => v.startsWith("YOUR_"));
+
+if (configMissing) {
+  loginStatus.textContent =
+    "Pehle Firebase Console se apna Web App config paste karo.";
+} else {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.firestore();
+
+    auth.onAuthStateChanged(async user => {
+      if (!user) {
+        loginCard.classList.remove("hidden");
+        dashboard.classList.add("hidden");
+        return;
+      }
+
+      try {
+        const adminDoc = await db.collection("admins").doc(user.uid).get();
+
+        if (!adminDoc.exists || adminDoc.data().active !== true) {
+          await auth.signOut();
+          loginStatus.textContent =
+            "Access denied: is account ko active admin banana zaroori hai.";
+          return;
+        }
+
+        loginCard.classList.add("hidden");
+        dashboard.classList.remove("hidden");
+        document.getElementById("ownerEmail").textContent = user.email || "";
+        loadLicenses();
+      } catch (error) {
+        loginStatus.textContent = "Admin check error: " + error.message;
+      }
+    });
+  } catch (error) {
+    loginStatus.textContent = "Firebase error: " + error.message;
+  }
+}
+
+document.getElementById("loginBtn").onclick = async () => {
+  if (!auth) {
+    loginStatus.textContent = "Firebase config pehle set karo.";
+    return;
+  }
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!email || !password) {
+    loginStatus.textContent = "Email aur password likho.";
+    return;
+  }
+
+  loginStatus.textContent = "Logging in...";
+
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+    loginStatus.textContent = "";
+  } catch (error) {
+    loginStatus.textContent = "Login error: " + error.message;
+  }
+};
+
+document.getElementById("logoutBtn").onclick = () => auth.signOut();
+
+document.getElementById("createBtn").onclick = async () => {
+  const status = document.getElementById("createStatus");
+  const id = document.getElementById("licenseId").value.trim();
+  const type = document.getElementById("licenseType").value;
+  const deviceId = document.getElementById("deviceId").value.trim();
+
+  if (!id) {
+    status.textContent = "License key likho.";
+    return;
+  }
+
+  status.textContent = "Creating...";
+
+  try {
+    await db.collection("licenses").doc(id).set({
+      active: false,
+      type: type,
+      deviceId: deviceId,
+      ownerUid: auth.currentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    status.textContent = "License create ho gaya: " + id;
+    loadLicenses();
+  } catch (error) {
+    status.textContent = "Error: " + error.message;
+  }
+};
+
+document.getElementById("refreshBtn").onclick = loadLicenses;
+
+async function loadLicenses() {
+  const list = document.getElementById("licenseList");
+  const status = document.getElementById("listStatus");
+
+  list.innerHTML = "";
+  status.textContent = "Loading licenses...";
+
+  try {
+    const snapshot = await db.collection("licenses").get();
+
+    if (snapshot.empty) {
+      status.textContent = "Abhi koi license nahi hai.";
+      return;
+    }
+
+    status.textContent = "";
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const item = document.createElement("div");
+      item.className = "license";
+
+      const title = document.createElement("strong");
+      title.textContent = doc.id;
+
+      const details = document.createElement("p");
+      details.textContent =
+        "Type: " + (data.type || "unknown") +
+        " | Status: " + (data.active ? "Active" : "Inactive");
+
+      const device = document.createElement("p");
+      device.className = "small";
+      device.textContent = "Device: " + (data.deviceId || "Not assigned");
+
+      const toggle = document.createElement("button");
+      toggle.textContent = data.active ? "Deactivate" : "Activate";
+      toggle.className = data.active ? "danger" : "";
+      toggle.onclick = async () => {
+        toggle.disabled = true;
+        try {
+          await db.collection("licenses").doc(doc.id).update({
+            active: !data.active
+          });
+          loadLicenses();
+        } catch (error) {
+          status.textContent = "Update error: " + error.message;
+          toggle.disabled = false;
+        }
+      };
+
+      item.append(title, details, device, toggle);
+      list.appendChild(item);
+    });
+  } catch (error) {
+    status.textContent = "Load error: " + error.message;
+  }
+}
+</script>
+</body>
+</html>
