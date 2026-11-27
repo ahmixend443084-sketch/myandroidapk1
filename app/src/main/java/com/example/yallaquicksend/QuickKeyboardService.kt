@@ -150,6 +150,7 @@ class QuickKeyboardService : InputMethodService() {
         keyboardRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
+
             setPadding(dp(4), dp(4), dp(4), dp(4))
 
             background = GradientDrawable().apply {
@@ -184,9 +185,9 @@ class QuickKeyboardService : InputMethodService() {
         val rows = keyboardRows ?: return
         rows.removeAllViews()
 
-        // Number mode has NO ABC/123/emoji/settings/language toolbar.
-        // Alphabet mode keeps its original toolbar.
+        // ABC aur NUM dono mein toolbar ki jagah barabar.
         if (numbersMode) {
+            addReservedToolbarSpace(rows)
             renderNumberPad(rows)
         } else {
             addToolbar(rows)
@@ -194,6 +195,17 @@ class QuickKeyboardService : InputMethodService() {
         }
 
         keyboardRoot.requestLayout()
+    }
+
+    // NUM mode mein ABC toolbar jitni height reserve karein.
+    private fun addReservedToolbarSpace(parent: LinearLayout) {
+        parent.addView(
+            View(this),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(keyHeight() + 4)
+            )
+        )
     }
 
     private fun addToolbar(parent: LinearLayout) {
@@ -320,7 +332,6 @@ class QuickKeyboardService : InputMethodService() {
             gravity = Gravity.CENTER
         }
 
-        // Left column: ABC, +, -, *, /
         val left = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -348,7 +359,6 @@ class QuickKeyboardService : InputMethodService() {
             )
         )
 
-        // Center: number keys.
         val grid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -374,8 +384,6 @@ class QuickKeyboardService : InputMethodService() {
             )
         )
 
-        // Right column: backspace on top and a large Send button.
-        // The Enter key has been removed.
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -583,7 +591,6 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    // Auto Drop counts non-whitespace characters.
     private fun typeText(value: String) {
         if (stopped || value.isEmpty()) return
 
@@ -736,7 +743,6 @@ class QuickKeyboardService : InputMethodService() {
         }
     }
 
-    // Same key height for alphabet and number-pad keys.
     private fun keyHeight(): Int {
         return (42f * keyboardSize / 100f)
             .toInt()
