@@ -28,11 +28,11 @@ class YallaAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Accessibility events are received while the service is enabled.
+        // Accessibility events are received while service is enabled.
     }
 
     override fun onInterrupt() {
-        // No continuous accessibility operation to interrupt.
+        // No continuous operation to interrupt.
     }
 
     override fun onDestroy() {
@@ -43,12 +43,13 @@ class YallaAccessibilityService : AccessibilityService() {
     }
 
     fun hasSavedSendPosition(): Boolean {
-        return prefs.getBoolean("sendPositionSaved", false)
+        return prefs.getBoolean("sendPositionSaved", false) &&
+            prefs.getInt("sendPositionX", -1) >= 0 &&
+            prefs.getInt("sendPositionY", -1) >= 0
     }
 
     /**
-     * Taps the saved screen coordinate immediately by dispatching a gesture.
-     * This does not wait for the Auto Drop delay.
+     * Tap the saved Send-button screen position.
      */
     fun tapSavedSendPosition(): Boolean {
         if (!hasSavedSendPosition()) return false
@@ -61,6 +62,7 @@ class YallaAccessibilityService : AccessibilityService() {
 
         val path = Path().apply {
             moveTo(x.toFloat(), y.toFloat())
+            lineTo(x.toFloat(), y.toFloat())
         }
 
         val gesture = GestureDescription.Builder()
@@ -68,7 +70,7 @@ class YallaAccessibilityService : AccessibilityService() {
                 GestureDescription.StrokeDescription(
                     path,
                     0L,
-                    50L
+                    100L
                 )
             )
             .build()
@@ -81,7 +83,7 @@ class YallaAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Searches visible accessibility nodes for a Send button.
+     * Find and click a visible Send button when available.
      */
     fun clickVisibleSend(): Boolean {
         val root = rootInActiveWindow ?: return false
@@ -96,6 +98,8 @@ class YallaAccessibilityService : AccessibilityService() {
     private fun findAndClickSend(
         node: AccessibilityNodeInfo
     ): Boolean {
+        if (!node.isVisibleToUser) return false
+
         val description = buildString {
             append(node.text?.toString().orEmpty())
             append(" ")
@@ -104,31 +108,42 @@ class YallaAccessibilityService : AccessibilityService() {
             append(node.viewIdResourceName.orEmpty())
         }.trim().lowercase()
 
-        val looksLikeSend = description == "send" ||
+        val looksLikeSend =
+            description == "send" ||
             description.contains("send button") ||
             description.endsWith(":id/send") ||
             description.endsWith("/send")
 
-        if (looksLikeSend && node.isVisibleToUser && node.isEnabled) {
-            if (node.isClickable &&
-                node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        if (looksLikeSend && node.isEnabled) {
+            if (
+                node.isClickable &&
+                node.performAction(
+                    AccessibilityNodeInfo.ACTION_CLICK
+                )
             ) {
                 return true
             }
 
             val parent = node.parent
             if (parent != null) {
-                val clicked = parent.isClickable &&
-                    parent.performAction(
-                        AccessibilityNodeInfo.ACTION_CLICK
-                    )
-                parent.recycle()
+                val clicked = try {
+                    parent.isVisibleToUser &&
+                        parent.isEnabled &&
+                        parent.isClickable &&
+                        parent.performAction(
+                            AccessibilityNodeInfo.ACTION_CLICK
+                        )
+                } finally {
+                    parent.recycle()
+                }
+
                 if (clicked) return true
             }
         }
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
+
             val clicked = try {
                 findAndClickSend(child)
             } finally {
@@ -142,7 +157,7 @@ class YallaAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Inserts text into the currently focused editable field.
+     * Insert text into the focused editable field.
      */
     fun insertText(value: String): Boolean {
         val root = rootInActiveWindow ?: return false
@@ -153,7 +168,8 @@ class YallaAccessibilityService : AccessibilityService() {
             try {
                 val arguments = Bundle().apply {
                     putCharSequence(
-                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        AccessibilityNodeInfo
+                            .ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                         value
                     )
                 }
@@ -171,7 +187,7 @@ class YallaAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Deletes the last character from the focused editable field.
+     * Delete the last character from the focused editable field.
      */
     fun deleteCharacter(): Boolean {
         val root = rootInActiveWindow ?: return false
@@ -183,12 +199,11 @@ class YallaAccessibilityService : AccessibilityService() {
                 val currentText = node.text?.toString() ?: return false
                 if (currentText.isEmpty()) return false
 
-                val newText = currentText.dropLast(1)
-
                 val arguments = Bundle().apply {
                     putCharSequence(
-                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        newText
+                        AccessibilityNodeInfo
+                            .ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        currentText.dropLast(1)
                     )
                 }
 
