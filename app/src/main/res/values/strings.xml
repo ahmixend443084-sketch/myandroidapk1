@@ -1,6 +1,8 @@
+
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FLASH🌙</string>
     <string name="accessibility_label">FLASH Accessibility</string>
     <string name="accessibility_description">Allows FLASH to access visible screen content and interact with editable fields when requested.</string>
+    <string name="accessibility_service_description">FLASH Send Service allows you to interact with the Send button when requested.</string>
 </resources>
